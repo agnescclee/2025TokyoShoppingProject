@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient'
 import { 
   ClipboardList, CheckCircle2, Store, Plane, Plus, Trash2, MapPin, 
   Shirt, Camera, ShoppingBag, ExternalLink, X, Hotel, Train, Bus, 
-  AlertCircle, Navigation, CalendarDays, ArrowRight, CornerDownRight
+  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn
 } from 'lucide-react'
 
 function App() {
@@ -20,12 +20,14 @@ function App() {
   const [showSizeModal, setShowSizeModal] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false) 
   const [showAddStoreModal, setShowAddStoreModal] = useState(false)
-  
-  // [NEW] 排程專用 Modal 狀態
   const [showAssignModal, setShowAssignModal] = useState(false)
-  const [targetDay, setTargetDay] = useState('') // 目前正在編輯哪一天 (e.g. 'Day 1')
-  const [selectedStoreId, setSelectedStoreId] = useState('') // 下拉選單選到的店
+  
+  // [NEW] 圖片預覽狀態
+  const [previewImage, setPreviewImage] = useState(null)
 
+  // 輔助狀態
+  const [targetDay, setTargetDay] = useState('') 
+  const [selectedStoreId, setSelectedStoreId] = useState('') 
   const [selectedMemberId, setSelectedMemberId] = useState(null)
   const [isCustomCategory, setIsCustomCategory] = useState(false)
 
@@ -37,7 +39,7 @@ function App() {
   
   const [newStore, setNewStore] = useState({
     name: '', category: '戶外用品', address: '', google_map_link: '', buying_tips: '',
-    plan_day: '' // 建立時可指定天數
+    plan_day: '' 
   })
 
   // 策略定義
@@ -106,7 +108,7 @@ function App() {
       const { error } = await supabase.from('stores').insert([newStore])
       if (error) throw error
       setShowAddStoreModal(false)
-      setShowAssignModal(false) // 也關閉排程視窗
+      setShowAssignModal(false)
       setNewStore({ name: '', category: '戶外用品', address: '', google_map_link: '', buying_tips: '', plan_day: '' })
       fetchAllData(); alert('商店新增成功！')
     } catch (error) { alert('新增失敗') }
@@ -121,15 +123,13 @@ function App() {
     } catch (error) { alert('刪除失敗') }
   }
 
-  // [NEW] 開啟排程視窗
   const openAssignModal = (dayId) => {
     setTargetDay(dayId)
-    setSelectedStoreId('') // 重置選擇
-    setNewStore(prev => ({ ...prev, plan_day: dayId })) // 如果要新增，預設就是這一天
+    setSelectedStoreId('')
+    setNewStore(prev => ({ ...prev, plan_day: dayId }))
     setShowAssignModal(true)
   }
 
-  // [NEW] 執行排程 (更新商店的 plan_day)
   const handleAssignStore = async () => {
     if (!selectedStoreId) return alert('請選擇一間商店')
     try {
@@ -176,9 +176,25 @@ function App() {
             {displayItems.length === 0 && <div className="text-center text-gray-400 py-20 text-sm">無項目</div>}
             {displayItems.map((item) => (
               <div key={item.id} className={`bg-white rounded-xl shadow-sm border border-gray-100 p-3 flex gap-3 relative transition-all ${item.is_purchased ? 'opacity-50 grayscale' : ''}`}>
-                <div className="w-16 h-16 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 border border-gray-100">
-                   {item.image_url ? <img src={item.image_url} className="w-full h-full object-cover" onError={(e) => e.target.style.display='none'} /> : <ShoppingBag className="text-gray-300 w-6 h-6" />}
+                
+                {/* [NEW] Image Container with Zoom Click */}
+                <div 
+                  className="w-16 h-16 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 border border-gray-100 relative cursor-zoom-in active:scale-95 transition-transform"
+                  onClick={() => item.image_url ? setPreviewImage(item.image_url) : null}
+                >
+                   {item.image_url ? (
+                     <>
+                       <img src={item.image_url} className="w-full h-full object-cover" onError={(e) => e.target.style.display='none'} />
+                       {/* 小放大鏡圖示提示 */}
+                       <div className="absolute bottom-0 right-0 bg-black/50 text-white p-0.5 rounded-tl-md">
+                         <ZoomIn size={10} />
+                       </div>
+                     </>
+                   ) : (
+                     <ShoppingBag className="text-gray-300 w-6 h-6" />
+                   )}
                 </div>
+
                 <div className="flex-1 min-w-0 pr-2">
                   <div className="flex justify-between items-center mb-1">
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${getBadgeColor(item.profiles?.nickname)}`}>{item.profiles?.nickname}</span>
@@ -206,7 +222,7 @@ function App() {
           </>
         )}
 
-        {/* VIEW: Strategy (攻略) */}
+        {/* VIEW: Strategy */}
         {activeTab === 'strategy' && (
           <div className="space-y-6 pb-10">
             {strategyDays.map(day => {
@@ -223,12 +239,10 @@ function App() {
                       <h4 className="font-bold text-sumi">{day.title}</h4>
                       <p className="text-xs text-gray-500 mt-1">{day.goal}</p>
                     </div>
-                    {/* [UPDATED] 攻略頁面的 + 按鈕：開啟「排程視窗」 */}
                     <button onClick={() => openAssignModal(day.id)} className="text-xs bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg border border-orange-100 flex items-center gap-1 active:scale-95 transition-transform font-bold">
                       <Plus size={14}/> 排入
                     </button>
                   </div>
-
                   <div className="space-y-2">
                     {dayStores.length === 0 && <div className="text-xs text-gray-300 italic pl-2">尚未安排</div>}
                     {dayStores.map(store => (
@@ -273,17 +287,19 @@ function App() {
         {/* VIEW: Info */}
         {activeTab === 'info' && (
           <div className="space-y-4 pb-10">
-            {/* ... Info Cards ... */}
+            {/* Flight */}
             <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-ruri p-4">
                <h3 className="text-base font-bold text-ruri flex items-center gap-2 mb-3"><Plane className="rotate-45" size={20} /> 去程 (MM620)</h3>
                <div className="text-sm text-gray-600 space-y-2"><div className="flex justify-between items-center font-bold text-sumi text-lg"><span>02:25 桃園</span><span className="text-gray-300">➔</span><span>06:30 成田</span></div><div className="bg-red-50 text-karakurenai px-3 py-1.5 rounded-md text-xs font-bold inline-flex items-center gap-1.5"><AlertCircle size={14}/> 01:35 關櫃</div></div>
             </div>
+            {/* Hotel */}
             <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-orange-400 p-4">
                <h3 className="text-base font-bold text-orange-600 flex items-center gap-2 mb-2"><Hotel size={20} /> 飯店資訊</h3>
                <p className="font-bold text-sumi text-lg">Hotel LiVEMAX Kayabacho</p>
                <p className="text-sm text-gray-500 mt-1 flex gap-1"><MapPin size={14} className="mt-0.5"/> 〒103-0025 東京都中央区日本橋茅場町3-7-3</p>
                <div className="mt-4"><a href="https://www.google.com/maps/dir/?api=1&destination=Hotel+LiVEMAX+Kayabacho" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-orange-50 text-orange-600 py-3 rounded-xl font-bold border border-orange-100 hover:bg-orange-100 transition-colors shadow-sm"><MapPin size={18} /> 帶我去飯店</a></div>
             </div>
+            {/* Transport */}
             <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-gray-400 p-4">
                <h3 className="text-base font-bold text-gray-700 flex items-center gap-2 mb-4"><Train size={20} /> 機場交通 (成田 ⮂ 茅場町)</h3>
                <div className="space-y-6">
@@ -295,7 +311,7 @@ function App() {
         )}
       </main>
 
-      {/* FAB: Only for todo/done/stores */}
+      {/* FAB */}
       {(activeTab === 'todo' || activeTab === 'done' || activeTab === 'stores') && (
         <button onClick={() => activeTab === 'stores' ? setShowAddStoreModal(true) : setShowAddModal(true)}
           className={`fixed bottom-24 right-5 text-white w-14 h-14 rounded-full shadow-lg shadow-blue-900/20 flex items-center justify-center active:scale-95 transition-all z-30 ${activeTab === 'stores' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-ruri hover:bg-ruri-light'}`}>
@@ -311,6 +327,16 @@ function App() {
         </button>
         <NavButton icon={<Camera size={22} />} label="掃描" active={false} onClick={() => alert('開發中')} />
       </footer>
+
+      {/* [NEW] Modal: Image Preview (LightBox) */}
+      {previewImage && (
+        <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setPreviewImage(null)}>
+          <img src={previewImage} className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain" onClick={(e) => e.stopPropagation()} />
+          <button className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 rounded-full p-2" onClick={() => setPreviewImage(null)}>
+            <X size={32}/>
+          </button>
+        </div>
+      )}
 
       {/* Modal: Size Card */}
       {showSizeModal && (
@@ -348,7 +374,7 @@ function App() {
         </div>
       )}
 
-      {/* [NEW] Modal: Assign Store (排程視窗) */}
+      {/* Modal: Assign Store */}
       {showAssignModal && (
         <div className="fixed inset-0 bg-kon-kikyo/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
@@ -358,40 +384,22 @@ function App() {
             </div>
             <div className="p-5 space-y-4">
               <p className="text-sm text-gray-500">請選擇已經建立的商店，將其移動到這一天。</p>
-              
-              {/* Store Selector */}
               <div>
                 <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">選擇商店</label>
                 <select className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 text-base outline-none" value={selectedStoreId} onChange={e => setSelectedStoreId(e.target.value)}>
                   <option value="">-- 請選擇 --</option>
-                  {stores.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} {s.plan_day ? `(目前在 ${s.plan_day})` : ''}
-                    </option>
-                  ))}
+                  {stores.map(s => <option key={s.id} value={s.id}>{s.name} {s.plan_day ? `(目前在 ${s.plan_day})` : ''}</option>)}
                 </select>
               </div>
-
-              <button onClick={handleAssignStore} className="w-full bg-orange-500 text-white py-3.5 rounded-xl font-bold shadow-lg mt-2 active:scale-[0.98]">
-                確認排入 (Assign)
-              </button>
-
-              <div className="relative flex py-2 items-center">
-                <div className="flex-grow border-t border-gray-200"></div>
-                <span className="flex-shrink-0 mx-4 text-gray-300 text-xs">或</span>
-                <div className="flex-grow border-t border-gray-200"></div>
-              </div>
-
-              {/* Create New Link */}
-              <button onClick={() => setShowAddStoreModal(true)} className="w-full bg-white text-orange-500 border border-orange-200 py-3 rounded-xl font-bold text-sm active:scale-[0.98]">
-                建立新商店並排入...
-              </button>
+              <button onClick={handleAssignStore} className="w-full bg-orange-500 text-white py-3.5 rounded-xl font-bold shadow-lg mt-2 active:scale-[0.98]">確認排入 (Assign)</button>
+              <div className="relative flex py-2 items-center"><div className="flex-grow border-t border-gray-200"></div><span className="flex-shrink-0 mx-4 text-gray-300 text-xs">或</span><div className="flex-grow border-t border-gray-200"></div></div>
+              <button onClick={() => setShowAddStoreModal(true)} className="w-full bg-white text-orange-500 border border-orange-200 py-3 rounded-xl font-bold text-sm active:scale-[0.98]">建立新商店並排入...</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Add Item Modal (省略以節省篇幅, 與V13同) */}
+      {/* Add Item Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-kon-kikyo/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -495,32 +503,26 @@ function BodyVisualWithFists() {
         <path d="M75,75 L50,150 L50,170 C45,170 45,185 50,185 C55,185 55,170 50,170 L75,85" />
         <path d="M125,75 L150,150 L150,170 C155,170 155,185 150,185 C145,185 145,170 150,170 L125,85" />
       </g>
-      
       {/* 1. Height */}
       <line x1="20" y1="15" x2="20" y2="380" stroke="#1E50A2" strokeWidth="1" strokeDasharray="4" markerEnd="url(#arrow)" />
       <circle cx="20" cy="200" r="8" fill="#1E50A2" />
       <text x="20" y="204" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">1</text>
-
       {/* 2. Arm */}
       <line x1="125" y1="75" x2="160" y2="180" stroke="#1E50A2" strokeWidth="1" strokeDasharray="4" />
       <circle cx="150" cy="120" r="8" fill="#1E50A2" />
       <text x="150" y="124" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">2</text>
-
       {/* 3. Waist */}
       <line x1="75" y1="150" x2="125" y2="150" stroke="#1E50A2" strokeWidth="1" strokeDasharray="4" />
       <circle cx="100" cy="150" r="8" fill="#1E50A2" />
       <text x="100" y="154" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">3</text>
-
       {/* 4. Hip */}
       <line x1="75" y1="180" x2="125" y2="180" stroke="#1E50A2" strokeWidth="1" strokeDasharray="4" />
       <circle cx="100" cy="180" r="8" fill="#1E50A2" />
       <text x="100" y="184" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">4</text>
-
       {/* 5. Leg (Waist to Floor) */}
       <line x1="165" y1="150" x2="165" y2="380" stroke="#1E50A2" strokeWidth="1" strokeDasharray="4" markerEnd="url(#arrow)" />
       <circle cx="165" cy="265" r="8" fill="#1E50A2" />
       <text x="165" y="269" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">5</text>
-
       {/* 6. Foot */}
       <line x1="60" y1="390" x2="100" y2="390" stroke="#1E50A2" strokeWidth="1" />
       <circle cx="80" cy="390" r="8" fill="#1E50A2" />
