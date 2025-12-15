@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import { 
   ClipboardList, CheckCircle2, Store, Plane, Plus, Trash2, MapPin, 
-  Shirt, Camera, ShoppingBag, ExternalLink, X, Hotel, Train, Bus, 
-  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn
+  Shirt, Camera, ShoppingBag, ShoppingCart, ExternalLink, X, Hotel, Train, Bus, 
+  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn, Palette
 } from 'lucide-react'
 
 function App() {
@@ -22,7 +22,7 @@ function App() {
   const [showAddStoreModal, setShowAddStoreModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
   
-  // [NEW] 圖片預覽狀態
+  // 圖片預覽狀態
   const [previewImage, setPreviewImage] = useState(null)
 
   // 輔助狀態
@@ -97,7 +97,7 @@ function App() {
       const { error } = await supabase.from('shopping_list').insert([payload])
       if (error) throw error
       setShowAddModal(false)
-      setNewItem({ ...newItem, item_name: '', image_url: '', purchase_note: '' })
+      setNewItem({ ...newItem, item_name: '', image_url: '', purchase_note: '', size: '', color: '' })
       fetchAllData(); alert('新增成功！')
     } catch (error) { alert('新增失敗') }
   }
@@ -151,7 +151,8 @@ function App() {
       {/* Header */}
       <header className="bg-ruri text-white p-4 sticky top-0 z-20 shadow-md">
         <h1 className="text-lg font-bold text-center tracking-widest flex items-center justify-center gap-2">
-           <Plane className="w-5 h-5" /> 東京採購特攻隊
+           {/* [UPDATED] Icon changed to ShoppingCart */}
+           <ShoppingCart className="w-5 h-5" /> 東京採購特攻隊
         </h1>
         <div className="flex justify-between text-xs mt-3 px-2 opacity-90 font-light">
           <span className="flex items-center gap-1"><Store className="w-3 h-3"/> 12/19 - 12/23</span>
@@ -177,7 +178,7 @@ function App() {
             {displayItems.map((item) => (
               <div key={item.id} className={`bg-white rounded-xl shadow-sm border border-gray-100 p-3 flex gap-3 relative transition-all ${item.is_purchased ? 'opacity-50 grayscale' : ''}`}>
                 
-                {/* [NEW] Image Container with Zoom Click */}
+                {/* Image Container with Zoom Click */}
                 <div 
                   className="w-16 h-16 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 border border-gray-100 relative cursor-zoom-in active:scale-95 transition-transform"
                   onClick={() => item.image_url ? setPreviewImage(item.image_url) : null}
@@ -185,10 +186,7 @@ function App() {
                    {item.image_url ? (
                      <>
                        <img src={item.image_url} className="w-full h-full object-cover" onError={(e) => e.target.style.display='none'} />
-                       {/* 小放大鏡圖示提示 */}
-                       <div className="absolute bottom-0 right-0 bg-black/50 text-white p-0.5 rounded-tl-md">
-                         <ZoomIn size={10} />
-                       </div>
+                       <div className="absolute bottom-0 right-0 bg-black/50 text-white p-0.5 rounded-tl-md"><ZoomIn size={10} /></div>
                      </>
                    ) : (
                      <ShoppingBag className="text-gray-300 w-6 h-6" />
@@ -205,7 +203,13 @@ function App() {
                   </div>
                   <h3 className="font-bold text-sumi text-base truncate leading-tight">{item.item_name}</h3>
                   {item.product_code && <div className="text-xs text-yellow-700 font-mono bg-yellow-50 px-1.5 py-0.5 inline-block rounded border border-yellow-100 mt-1.5">No. {item.product_code}</div>}
-                  <div className="text-xs text-gray-500 mt-2 flex flex-wrap gap-2 items-center"><span className="flex items-center gap-1"><Shirt size={10}/> {item.color} {item.size}</span><span className="text-sumi font-bold bg-gray-100 px-1.5 rounded">x{item.quantity}</span></div>
+                  
+                  <div className="text-xs text-gray-500 mt-2 flex flex-wrap gap-2 items-center">
+                    {item.size && <span className="flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100"><Shirt size={10}/> {item.size}</span>}
+                    {item.color && <span className="flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100"><Palette size={10}/> {item.color}</span>}
+                    <span className="text-sumi font-bold bg-gray-100 px-1.5 rounded">x{item.quantity}</span>
+                  </div>
+                  
                    {item.purchase_note && <div className="text-xs text-gray-400 mt-1 italic">📝 {item.purchase_note}</div>}
                 </div>
                 {/* Vertical Actions */}
@@ -287,19 +291,16 @@ function App() {
         {/* VIEW: Info */}
         {activeTab === 'info' && (
           <div className="space-y-4 pb-10">
-            {/* Flight */}
             <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-ruri p-4">
                <h3 className="text-base font-bold text-ruri flex items-center gap-2 mb-3"><Plane className="rotate-45" size={20} /> 去程 (MM620)</h3>
                <div className="text-sm text-gray-600 space-y-2"><div className="flex justify-between items-center font-bold text-sumi text-lg"><span>02:25 桃園</span><span className="text-gray-300">➔</span><span>06:30 成田</span></div><div className="bg-red-50 text-karakurenai px-3 py-1.5 rounded-md text-xs font-bold inline-flex items-center gap-1.5"><AlertCircle size={14}/> 01:35 關櫃</div></div>
             </div>
-            {/* Hotel */}
             <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-orange-400 p-4">
                <h3 className="text-base font-bold text-orange-600 flex items-center gap-2 mb-2"><Hotel size={20} /> 飯店資訊</h3>
                <p className="font-bold text-sumi text-lg">Hotel LiVEMAX Kayabacho</p>
                <p className="text-sm text-gray-500 mt-1 flex gap-1"><MapPin size={14} className="mt-0.5"/> 〒103-0025 東京都中央区日本橋茅場町3-7-3</p>
                <div className="mt-4"><a href="https://www.google.com/maps/dir/?api=1&destination=Hotel+LiVEMAX+Kayabacho" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-orange-50 text-orange-600 py-3 rounded-xl font-bold border border-orange-100 hover:bg-orange-100 transition-colors shadow-sm"><MapPin size={18} /> 帶我去飯店</a></div>
             </div>
-            {/* Transport */}
             <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-gray-400 p-4">
                <h3 className="text-base font-bold text-gray-700 flex items-center gap-2 mb-4"><Train size={20} /> 機場交通 (成田 ⮂ 茅場町)</h3>
                <div className="space-y-6">
@@ -328,13 +329,11 @@ function App() {
         <NavButton icon={<Camera size={22} />} label="掃描" active={false} onClick={() => alert('開發中')} />
       </footer>
 
-      {/* [NEW] Modal: Image Preview (LightBox) */}
+      {/* Modal: Image Preview */}
       {previewImage && (
         <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setPreviewImage(null)}>
           <img src={previewImage} className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain" onClick={(e) => e.stopPropagation()} />
-          <button className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 rounded-full p-2" onClick={() => setPreviewImage(null)}>
-            <X size={32}/>
-          </button>
+          <button className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 rounded-full p-2" onClick={() => setPreviewImage(null)}><X size={32}/></button>
         </div>
       )}
 
@@ -415,10 +414,14 @@ function App() {
               </div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Item Name</label><input type="text" placeholder="例如：發熱襪" className="w-full border border-gray-200 p-2.5 rounded-lg text-base outline-none" value={newItem.item_name} onChange={e => setNewItem({...newItem, item_name: e.target.value})} /></div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Image URL</label><input type="text" placeholder="https://..." className="w-full border border-gray-200 p-2.5 rounded-lg text-sm outline-none" value={newItem.image_url} onChange={e => setNewItem({...newItem, image_url: e.target.value})} /></div>
+              
+              {/* Separated Size & Color Inputs */}
               <div className="flex gap-3">
                 <div className="flex-1"><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Qty</label><input type="number" min="1" className="w-full border border-gray-200 p-2.5 rounded-lg" value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: parseInt(e.target.value)})} /></div>
-                <div className="flex-[2]"><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Size/Color</label><input type="text" placeholder="L / 紅" className="w-full border border-gray-200 p-2.5 rounded-lg" value={newItem.size} onChange={e => setNewItem({...newItem, size: e.target.value})} /></div>
+                <div className="flex-1"><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Size</label><input type="text" placeholder="L" className="w-full border border-gray-200 p-2.5 rounded-lg" value={newItem.size} onChange={e => setNewItem({...newItem, size: e.target.value})} /></div>
+                <div className="flex-1"><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Color</label><input type="text" placeholder="紅" className="w-full border border-gray-200 p-2.5 rounded-lg" value={newItem.color} onChange={e => setNewItem({...newItem, color: e.target.value})} /></div>
               </div>
+              
               <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Note</label><input type="text" placeholder="備註..." className="w-full border border-gray-200 p-2.5 rounded-lg" value={newItem.purchase_note} onChange={e => setNewItem({...newItem, purchase_note: e.target.value})} /></div>
               <button type="submit" className="w-full bg-ruri text-white py-3.5 rounded-xl font-bold shadow-lg active:scale-[0.98] transition-transform mt-2">確認新增</button>
             </form>
@@ -490,7 +493,6 @@ function SizeRow({ num, label, jp, val, highlight }) {
   )
 }
 
-// Visual Body with Number Bubbles
 function BodyVisualWithFists() {
   return (
     <svg viewBox="0 0 200 400" className="w-full h-full drop-shadow-md">
