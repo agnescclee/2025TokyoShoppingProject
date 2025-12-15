@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient'
 import { 
   ClipboardList, CheckCircle2, Store, Plane, Plus, Trash2, MapPin, 
   Shirt, Camera, ShoppingBag, ShoppingCart, ExternalLink, X, Hotel, Train, Bus, 
-  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn, Palette
+  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn, Palette, Coins
 } from 'lucide-react'
 
 function App() {
@@ -31,10 +31,11 @@ function App() {
   const [selectedMemberId, setSelectedMemberId] = useState(null)
   const [isCustomCategory, setIsCustomCategory] = useState(false)
 
-  // --- 新增表單狀態 ---
+  // --- 新增表單狀態 (新增 max_price) ---
   const [newItem, setNewItem] = useState({
     item_name: '', category: '保暖層', quantity: 1, requester_id: '',
-    size: '', color: '', purchase_note: '', store_suggestion_id: '', image_url: ''            
+    size: '', color: '', purchase_note: '', store_suggestion_id: '', image_url: '',
+    max_price: '' // [NEW] 預算上限
   })
   
   const [newStore, setNewStore] = useState({
@@ -93,13 +94,19 @@ function App() {
   const handleAddItem = async (e) => {
     e.preventDefault(); if (!newItem.item_name) return alert('請輸入品項名稱')
     try {
-      const payload = { ...newItem, store_suggestion_id: newItem.store_suggestion_id || null }
+      // 處理 max_price 為空字串的情況，轉為 null
+      const payload = { 
+        ...newItem, 
+        store_suggestion_id: newItem.store_suggestion_id || null,
+        max_price: newItem.max_price ? parseInt(newItem.max_price) : null
+      }
       const { error } = await supabase.from('shopping_list').insert([payload])
       if (error) throw error
       setShowAddModal(false)
-      setNewItem({ ...newItem, item_name: '', image_url: '', purchase_note: '', size: '', color: '' })
+      // 重置所有欄位
+      setNewItem({ ...newItem, item_name: '', image_url: '', purchase_note: '', size: '', color: '', max_price: '' })
       fetchAllData(); alert('新增成功！')
-    } catch (error) { alert('新增失敗') }
+    } catch (error) { alert('新增失敗: ' + error.message) }
   }
 
   const handleAddStore = async (e) => {
@@ -141,6 +148,11 @@ function App() {
     } catch (error) { alert('排程失敗') }
   }
 
+  // 金額格式化 (e.g. 25000 -> 25,000)
+  const formatPrice = (price) => {
+    return price ? price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",") : '';
+  }
+
   const displayItems = items.filter(item => activeTab === 'todo' ? !item.is_purchased : item.is_purchased)
   const getBadgeColor = (nickname) => { return 'bg-gray-100 text-gray-600 border-gray-200' }
 
@@ -151,7 +163,6 @@ function App() {
       {/* Header */}
       <header className="bg-ruri text-white p-4 sticky top-0 z-20 shadow-md">
         <h1 className="text-lg font-bold text-center tracking-widest flex items-center justify-center gap-2">
-           {/* [UPDATED] Icon changed to ShoppingCart */}
            <ShoppingCart className="w-5 h-5" /> 東京採購特攻隊
         </h1>
         <div className="flex justify-between text-xs mt-3 px-2 opacity-90 font-light">
@@ -178,7 +189,7 @@ function App() {
             {displayItems.map((item) => (
               <div key={item.id} className={`bg-white rounded-xl shadow-sm border border-gray-100 p-3 flex gap-3 relative transition-all ${item.is_purchased ? 'opacity-50 grayscale' : ''}`}>
                 
-                {/* Image Container with Zoom Click */}
+                {/* Image Container */}
                 <div 
                   className="w-16 h-16 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 border border-gray-100 relative cursor-zoom-in active:scale-95 transition-transform"
                   onClick={() => item.image_url ? setPreviewImage(item.image_url) : null}
@@ -204,11 +215,19 @@ function App() {
                   <h3 className="font-bold text-sumi text-base truncate leading-tight">{item.item_name}</h3>
                   {item.product_code && <div className="text-xs text-yellow-700 font-mono bg-yellow-50 px-1.5 py-0.5 inline-block rounded border border-yellow-100 mt-1.5">No. {item.product_code}</div>}
                   
+                  {/* Size / Color / Qty */}
                   <div className="text-xs text-gray-500 mt-2 flex flex-wrap gap-2 items-center">
                     {item.size && <span className="flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100"><Shirt size={10}/> {item.size}</span>}
                     {item.color && <span className="flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100"><Palette size={10}/> {item.color}</span>}
                     <span className="text-sumi font-bold bg-gray-100 px-1.5 rounded">x{item.quantity}</span>
                   </div>
+
+                  {/* [NEW] Price Budget Display */}
+                  {item.max_price && (
+                    <div className="mt-2 inline-flex items-center gap-1 text-xs text-karakurenai font-bold bg-red-50 px-2 py-0.5 rounded border border-red-100">
+                      <Coins size={10} /> 上限 ¥{formatPrice(item.max_price)}
+                    </div>
+                  )}
                   
                    {item.purchase_note && <div className="text-xs text-gray-400 mt-1 italic">📝 {item.purchase_note}</div>}
                 </div>
@@ -398,7 +417,7 @@ function App() {
         </div>
       )}
 
-      {/* Add Item Modal */}
+      {/* Add Item Modal (Updated with Price Limit) */}
       {showAddModal && (
         <div className="fixed inset-0 bg-kon-kikyo/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -413,9 +432,12 @@ function App() {
                  <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Store</label><select className="w-full border border-gray-200 p-2.5 rounded-lg bg-gray-50 text-sm outline-none" value={newItem.store_suggestion_id} onChange={e => setNewItem({...newItem, store_suggestion_id: e.target.value})}><option value="">不指定</option>{stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
               </div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Item Name</label><input type="text" placeholder="例如：發熱襪" className="w-full border border-gray-200 p-2.5 rounded-lg text-base outline-none" value={newItem.item_name} onChange={e => setNewItem({...newItem, item_name: e.target.value})} /></div>
+              
+              {/* [NEW] Price Budget Input */}
+              <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Budget Limit (¥)</label><input type="number" placeholder="預算上限 (日幣)" className="w-full border border-gray-200 p-2.5 rounded-lg text-base outline-none text-karakurenai font-bold" value={newItem.max_price} onChange={e => setNewItem({...newItem, max_price: e.target.value})} /></div>
+
               <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Image URL</label><input type="text" placeholder="https://..." className="w-full border border-gray-200 p-2.5 rounded-lg text-sm outline-none" value={newItem.image_url} onChange={e => setNewItem({...newItem, image_url: e.target.value})} /></div>
               
-              {/* Separated Size & Color Inputs */}
               <div className="flex gap-3">
                 <div className="flex-1"><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Qty</label><input type="number" min="1" className="w-full border border-gray-200 p-2.5 rounded-lg" value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: parseInt(e.target.value)})} /></div>
                 <div className="flex-1"><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Size</label><input type="text" placeholder="L" className="w-full border border-gray-200 p-2.5 rounded-lg" value={newItem.size} onChange={e => setNewItem({...newItem, size: e.target.value})} /></div>
