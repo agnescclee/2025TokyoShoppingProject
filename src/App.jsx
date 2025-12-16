@@ -3,15 +3,15 @@ import { supabase } from './supabaseClient'
 import { 
   ClipboardList, CheckCircle2, Store, Plane, Plus, Trash2, MapPin, 
   Shirt, Camera, ShoppingBag, ShoppingCart, ExternalLink, X, Hotel, Train, Bus, 
-  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn, Palette, Coins, Edit, Save, Barcode, RotateCcw, Map as MapIcon, List
+  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn, Palette, Coins, Edit, Save, Barcode, RotateCcw, Map as MapIcon, List, Wallet, ImagePlus, Loader2
 } from 'lucide-react'
 
-// --- [V23] 地圖相關引入 ---
+// --- 地圖相關引入 ---
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
-// --- [V23] 修復 Leaflet 預設圖標缺失的問題 ---
+// --- 修復 Leaflet 圖標 ---
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 
@@ -30,6 +30,7 @@ function App() {
   const [measurements, setMeasurements] = useState([]) 
   const [profiles, setProfiles] = useState([]) 
   const [stores, setStores] = useState([]) 
+  const [expenses, setExpenses] = useState([]) // [V26] 記帳資料
   const [categories, setCategories] = useState([]) 
   const [loading, setLoading] = useState(true)
   
@@ -39,8 +40,9 @@ function App() {
   const [showAddModal, setShowAddModal] = useState(false) 
   const [showAddStoreModal, setShowAddStoreModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
+  const [showExpenseModal, setShowExpenseModal] = useState(false) // [V26] 記帳 Modal
   
-  // [V23] 商店顯示模式: 'list' (列表) 或 'map' (地圖)
+  // 商店顯示模式
   const [storeViewMode, setStoreViewMode] = useState('list')
 
   // 圖片預覽
@@ -52,6 +54,9 @@ function App() {
   const [isEditingSize, setIsEditingSize] = useState(false) 
   const [isEditingStore, setIsEditingStore] = useState(false) 
   const [editingStoreId, setEditingStoreId] = useState(null)  
+
+  // [V26] 上傳狀態
+  const [isUploading, setIsUploading] = useState(false)
 
   // 輔助狀態
   const [targetDay, setTargetDay] = useState('') 
@@ -68,6 +73,11 @@ function App() {
   const [newStore, setNewStore] = useState({
     name: '', category: '戶外用品', address: '', google_map_link: '', buying_tips: '',
     plan_day: '', lat: '', lng: ''
+  })
+
+  // [V26] 記帳表單
+  const [newExpense, setNewExpense] = useState({
+    amount: '', store_name: '', category: '購物', note: '', receipt_url: ''
   })
 
   const [editMeasure, setEditMeasure] = useState({})
@@ -104,6 +114,11 @@ function App() {
 
       const { data: storeData } = await supabase.from('stores').select('*').order('plan_day', { ascending: true })
       setStores(storeData || [])
+
+      // [V26] 抓取花費
+      const { data: expenseData } = await supabase.from('expenses').select('*').order('created_at', { ascending: false })
+      setExpenses(expenseData || [])
+
     } catch (error) { console.error('Error:', error) } finally { setLoading(false) }
   }
 
@@ -266,6 +281,75 @@ function App() {
     } catch (error) { alert('更新失敗') }
   }
 
+  // --- [V26] 記帳相關邏輯 ---
+
+  // 上傳圖片到 Supabase Storage
+  const handleReceiptUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    setIsUploading(true)
+    try {
+      // 1. 產生不重複檔名
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}.${fileExt}`
+      const filePath = `${fileName}`
+
+      // 2. 上傳
+      const { error: uploadError } = await supabase.storage
+        .from('receipts')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      // 3. 取得公開網址
+      const { data } = supabase.storage.from('receipts').getPublicUrl(filePath)
+      
+      // 4. 更新 State
+      setNewExpense(prev => ({ ...prev, receipt_url: data.publicUrl }))
+      
+    } catch (error) {
+      alert('圖片上傳失敗：' + error.message)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  // 儲存記帳
+  const handleSaveExpense = async (e) => {
+    e.preventDefault();
+    if (!newExpense.amount) return alert('請輸入金額')
+
+    try {
+      const { error } = await supabase.from('expenses').insert([{
+        amount: parseInt(newExpense.amount),
+        store_name: newExpense.store_name,
+        category: newExpense.category,
+        note: newExpense.note,
+        receipt_url: newExpense.receipt_url
+      }])
+      
+      if (error) throw error
+      
+      alert('記帳成功！')
+      setShowExpenseModal(false)
+      setNewExpense({ amount: '', store_name: '', category: '購物', note: '', receipt_url: '' })
+      fetchAllData() // 刷新列表
+    } catch (error) {
+      alert('儲存失敗：' + error.message)
+    }
+  }
+
+  const handleDeleteExpense = async (id) => {
+    if(!confirm('確定要刪除這筆紀錄嗎？')) return
+    try {
+        const { error } = await supabase.from('expenses').delete().eq('id', id)
+        if(error) throw error
+        setExpenses(expenses.filter(e => e.id !== id))
+    } catch(error) { alert('刪除失敗') }
+  }
+
+  // Helpers
   const formatPrice = (price) => price ? price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",") : '';
   const displayItems = items.filter(item => activeTab === 'todo' ? !item.is_purchased : item.is_purchased)
   
@@ -286,12 +370,15 @@ function App() {
     )
   }
 
+  // 計算總花費
+  const totalExpense = expenses.reduce((sum, item) => sum + (item.amount || 0), 0)
+
   if (loading) return <div className="flex h-screen items-center justify-center text-xl text-ruri animate-pulse">載入中...</div>
 
   return (
     <div className="min-h-screen bg-gofun pb-32 font-sans text-sumi">
       
-      {/* 頂部固定區塊 (Wrapper) */}
+      {/* 頂部固定區塊 */}
       <div className="sticky top-0 z-30 shadow-md">
         <header className="bg-ruri text-white p-4">
           <h1 className="text-lg font-bold text-center tracking-widest flex items-center justify-center gap-2">
@@ -404,10 +491,9 @@ function App() {
           </div>
         )}
 
-        {/* VIEW: Stores List / Map [V23 Updated] */}
+        {/* VIEW: Stores */}
         {activeTab === 'stores' && (
           <div className="space-y-4">
-             {/* [V23] Mode Toggle */}
              <div className="flex justify-center mb-4">
                <div className="bg-gray-100 p-1 rounded-xl flex gap-1">
                  <button onClick={() => setStoreViewMode('list')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${storeViewMode === 'list' ? 'bg-white shadow-sm text-ruri' : 'text-gray-400 hover:text-gray-600'}`}>
@@ -419,7 +505,6 @@ function App() {
                </div>
              </div>
 
-             {/* Mode: List */}
              {storeViewMode === 'list' && stores.map(store => (
                <div key={store.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 relative">
                   <div className="mb-3">
@@ -438,65 +523,32 @@ function App() {
                </div>
              ))}
 
-             {/* [V25] Mode: Map (交互升級版) */}
              {storeViewMode === 'map' && (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden h-[60vh] relative z-0">
                    <MapContainer center={[35.6812, 139.7671]} zoom={13} style={{ height: '100%', width: '100%' }}>
-                      
-                      {/* 使用 CartoDB Voyager 文青圖層 */}
                       <TileLayer
                         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                       />
-
                       {stores.filter(s => s.lat && s.lng).map(store => (
                         <Marker key={store.id} position={[store.lat, store.lng]}>
                           <Popup minWidth={200}>
                             <div className="font-sans">
-                              {/* 標題區 */}
                               <div className="flex justify-between items-start mb-2 border-b border-gray-100 pb-1">
                                 <strong className="text-sm text-sumi">{store.name}</strong>
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${store.plan_day ? 'bg-ruri text-white' : 'bg-gray-200 text-gray-500'}`}>
                                   {store.plan_day || '未排'}
                                 </span>
                               </div>
-
-                              {/* 資訊區 */}
                               <div className="text-xs text-gray-500 mb-3 space-y-1">
                                 <p>{store.category}</p>
-                                {store.buying_tips ? (
-                                  <p className="text-orange-600 bg-orange-50 p-1 rounded">💡 {store.buying_tips}</p>
-                                ) : (
-                                  <p className="italic text-gray-300">無採購筆記</p>
-                                )}
+                                {store.buying_tips ? <p className="text-orange-600 bg-orange-50 p-1 rounded">💡 {store.buying_tips}</p> : <p className="italic text-gray-300">無採購筆記</p>}
                               </div>
-
-                              {/* [V25] 強大交互按鈕區 */}
                               <div className="flex gap-2">
-                                {/* 1. 導航 (如果有的話) */}
-                                {store.google_map_link && (
-                                  <a href={store.google_map_link} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-xs font-bold no-underline hover:bg-blue-100">
-                                    <Navigation size={12} className="mr-1"/> 導航
-                                  </a>
-                                )}
-                                
-                                {/* 2. 編輯 (直接呼叫 App 的 Modal) */}
-                                <button 
-                                  onClick={() => openEditStoreModal(store)}
-                                  className="flex-1 flex items-center justify-center bg-gray-50 text-gray-600 border border-gray-200 py-1.5 rounded text-xs font-bold hover:bg-gray-100"
-                                >
-                                  <Edit size={12} className="mr-1"/> 編輯
-                                </button>
-
-                                {/* 3. 刪除 */}
-                                <button 
-                                  onClick={() => handleDeleteStore(store.id)}
-                                  className="w-8 flex items-center justify-center bg-red-50 text-red-500 border border-red-100 py-1.5 rounded hover:bg-red-100"
-                                >
-                                  <Trash2 size={12}/>
-                                </button>
+                                {store.google_map_link && <a href={store.google_map_link} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-xs font-bold no-underline hover:bg-blue-100"><Navigation size={12} className="mr-1"/> 導航</a>}
+                                <button onClick={() => openEditStoreModal(store)} className="flex-1 flex items-center justify-center bg-gray-50 text-gray-600 border border-gray-200 py-1.5 rounded text-xs font-bold hover:bg-gray-100"><Edit size={12} className="mr-1"/> 編輯</button>
+                                <button onClick={() => handleDeleteStore(store.id)} className="w-8 flex items-center justify-center bg-red-50 text-red-500 border border-red-100 py-1.5 rounded hover:bg-red-100"><Trash2 size={12}/></button>
                               </div>
-
                             </div>
                           </Popup>
                         </Marker>
@@ -507,9 +559,52 @@ function App() {
           </div>
         )}
 
-        {/* VIEW: Info */}
+        {/* VIEW: Info & Wallet [V26] */}
         {activeTab === 'info' && (
           <div className="space-y-4 pb-10">
+            {/* [V26] Wallet Dashboard */}
+            <div className="bg-gradient-to-r from-sumi to-gray-800 rounded-xl shadow-md p-5 text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet size={120}/></div>
+                <h3 className="text-xs font-bold text-gray-400 mb-1 flex items-center gap-2"><Wallet size={14}/> 累計花費 (Total Spending)</h3>
+                <div className="text-4xl font-bold font-mono tracking-tight mb-4">
+                   ¥ {formatPrice(totalExpense)}
+                </div>
+                <button onClick={() => setShowExpenseModal(true)} className="w-full bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 text-white py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all">
+                    <Camera size={16}/> 掃描收據 / 記一筆
+                </button>
+            </div>
+
+            {/* [V26] Recent Expenses List */}
+            {expenses.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                    <h3 className="font-bold text-sm text-sumi mb-3 flex items-center justify-between">
+                        <span>最近消費紀錄</span>
+                        <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">{expenses.length} 筆</span>
+                    </h3>
+                    <div className="space-y-3">
+                        {expenses.map(exp => (
+                            <div key={exp.id} className="flex gap-3 items-center border-b border-gray-50 last:border-0 pb-3 last:pb-0">
+                                <div className="w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden border border-gray-100 cursor-pointer" onClick={() => exp.receipt_url && setPreviewImage(exp.receipt_url)}>
+                                    {exp.receipt_url ? <img src={exp.receipt_url} className="w-full h-full object-cover"/> : <Wallet size={20} className="text-gray-300"/>}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-baseline">
+                                        <div className="font-bold text-sumi truncate">{exp.store_name || '未知名稱'}</div>
+                                        <div className="font-mono font-bold text-sumi">¥{formatPrice(exp.amount)}</div>
+                                    </div>
+                                    <div className="flex justify-between items-center mt-1">
+                                        <div className="text-xs text-gray-500">{exp.category} · {new Date(exp.created_at).toLocaleDateString()}</div>
+                                        <button onClick={() => handleDeleteExpense(exp.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={14}/></button>
+                                    </div>
+                                    {exp.note && <div className="text-xs text-gray-400 mt-1 italic">{exp.note}</div>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Static Info (Flight, etc.) */}
             <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-ruri p-4"><h3 className="text-base font-bold text-ruri flex items-center gap-2 mb-3"><Plane className="rotate-45" size={20} /> 去程 (MM620)</h3><div className="text-sm text-gray-600 space-y-2"><div className="flex justify-between items-center font-bold text-sumi text-lg"><span>02:25 桃園</span><span className="text-gray-300">➔</span><span>06:30 成田</span></div><div className="bg-red-50 text-karakurenai px-3 py-1.5 rounded-md text-xs font-bold inline-flex items-center gap-1.5"><AlertCircle size={14}/> 01:35 關櫃</div></div></div>
             <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-orange-400 p-4"><h3 className="text-base font-bold text-orange-600 flex items-center gap-2 mb-2"><Hotel size={20} /> 飯店資訊</h3><p className="font-bold text-sumi text-lg">Hotel LiVEMAX Kayabacho</p><p className="text-sm text-gray-500 mt-1 flex gap-1"><MapPin size={14} className="mt-0.5"/> 〒103-0025 東京都中央区日本橋茅場町3-7-3</p><div className="mt-4"><a href="https://www.google.com/maps/dir/?api=1&destination=Hotel+LiVEMAX+Kayabacho" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-orange-50 text-orange-600 py-3 rounded-xl font-bold border border-orange-100 hover:bg-orange-100 transition-colors shadow-sm"><MapPin size={18} /> 帶我去飯店</a></div></div>
             <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-gray-400 p-4"><h3 className="text-base font-bold text-gray-700 flex items-center gap-2 mb-4"><Train size={20} /> 機場交通 (成田 ⮂ 茅場町)</h3><div className="space-y-6"><div className="border-b border-gray-100 pb-4"><div className="flex justify-between items-center mb-1"><span className="font-bold text-sumi flex items-center gap-1.5"><Train size={16} className="text-gray-400"/> 方案 A：京成 Access</span><span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">¥1,400</span></div><p className="text-xs text-gray-500 leading-relaxed mb-3">成田機場 ➔ Access 特急 (往羽田) ➔ <strong>日本橋站</strong> 下車 ➔ 走路 8 分鐘。</p><a href="https://www.google.com/maps/dir/?api=1&origin=Narita+International+Airport&destination=Hotel+LiVEMAX+Kayabacho&travelmode=transit" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-gray-50 text-gray-600 py-3 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-colors"><Navigation size={18} /> 導航：機場 ➔ 飯店 (鐵路)</a></div><div><div className="flex justify-between items-center mb-1"><span className="font-bold text-sumi flex items-center gap-1.5"><Bus size={16} className="text-gray-400"/> 方案 B：利木津巴士</span><span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-mono">¥2,800</span></div><p className="text-xs text-gray-500 leading-relaxed mb-3">成田機場 ➔ 利木津巴士往「T-CAT」 ➔ T-CAT (水天宮前站) ➔ 走路 10 分鐘到飯店。</p><a href="https://www.google.com/maps/dir/?api=1&origin=Narita+Airport&destination=Tokyo+City+Air+Terminal&travelmode=transit" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-gray-50 text-gray-600 py-3 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-colors"><Navigation size={18} /> 導航：機場 ➔ 飯店 (巴士優先)</a></div></div></div>
@@ -534,12 +629,14 @@ function App() {
         </button>
       )}
 
+      {/* Footer (Updated Camera Button) */}
       <footer className="fixed bottom-0 w-full bg-kon-kikyo text-gray-400 border-t border-gray-800 p-2 pb-5 flex justify-around z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
         <NavButton icon={<ClipboardList size={22} />} label="清單" active={activeTab === 'todo'} onClick={() => { setActiveTab('todo'); setShowAddModal(false); }} />
         <button className="flex flex-col items-center justify-center bg-white text-ruri w-14 h-14 rounded-full -mt-8 shadow-xl border-4 border-gofun relative z-10 active:scale-95 transition-transform" onClick={() => setShowSizeModal(true)}>
           <Shirt size={28} strokeWidth={2} />
         </button>
-        <NavButton icon={<Camera size={22} />} label="掃描" active={false} onClick={() => alert('開發中')} />
+        {/* [V26] Updated Camera Action */}
+        <NavButton icon={<Camera size={22} />} label="記帳" active={activeTab === 'info'} onClick={() => setShowExpenseModal(true)} />
       </footer>
 
       {previewImage && (
@@ -549,6 +646,79 @@ function App() {
         </div>
       )}
 
+      {/* [V26] Expense Modal (Wallet) */}
+      {showExpenseModal && (
+        <div className="fixed inset-0 bg-kon-kikyo/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
+            <div className="bg-sumi p-4 text-white flex justify-between items-center">
+              <h3 className="font-bold text-lg flex items-center gap-2"><Wallet size={20}/> 新增消費</h3>
+              <button onClick={() => setShowExpenseModal(false)} className="opacity-80 hover:opacity-100"><X size={24}/></button>
+            </div>
+            
+            <form onSubmit={handleSaveExpense} className="p-5 space-y-4">
+                
+                {/* 1. 上傳收據區塊 */}
+                <div className="flex justify-center mb-2">
+                    <label className={`w-full h-32 rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all relative overflow-hidden ${newExpense.receipt_url ? 'border-ruri bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'}`}>
+                        {isUploading ? (
+                             <div className="flex flex-col items-center text-ruri animate-pulse"><Loader2 size={30} className="animate-spin mb-2"/><span className="text-xs font-bold">上傳中...</span></div>
+                        ) : newExpense.receipt_url ? (
+                             <>
+                                <img src={newExpense.receipt_url} className="w-full h-full object-cover opacity-80" />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-white font-bold text-xs opacity-0 hover:opacity-100 transition-opacity">點擊更換照片</div>
+                             </>
+                        ) : (
+                             <div className="text-gray-400 flex flex-col items-center"><ImagePlus size={30} className="mb-2"/><span className="text-xs font-bold">點此拍收據 / 選照片</span></div>
+                        )}
+                        <input type="file" accept="image/*" className="hidden" onChange={handleReceiptUpload} disabled={isUploading}/>
+                    </label>
+                </div>
+
+                {/* 2. 金額 (大字) */}
+                <div>
+                    <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">金額 (¥)</label>
+                    <input type="number" placeholder="0" className="w-full border-b-2 border-gray-200 p-2 text-3xl font-mono font-bold text-center text-sumi outline-none focus:border-ruri bg-transparent" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})} autoFocus />
+                </div>
+
+                {/* 3. 店家 (可選現有) */}
+                <div>
+                    <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">店家</label>
+                    <div className="flex gap-2">
+                         <select className="w-1/3 border border-gray-200 p-2.5 rounded-lg bg-gray-50 text-xs" onChange={e => setNewExpense({...newExpense, store_name: e.target.value})}>
+                            <option value="">(快速選)</option>
+                            {stores.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                         </select>
+                         <input type="text" placeholder="輸入店名..." className="flex-1 border border-gray-200 p-2.5 rounded-lg text-sm outline-none" value={newExpense.store_name} onChange={e => setNewExpense({...newExpense, store_name: e.target.value})} />
+                    </div>
+                </div>
+
+                {/* 4. 類別 & 備註 */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">類別</label>
+                        <select className="w-full border border-gray-200 p-2.5 rounded-lg bg-gray-50 text-sm" value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value})}>
+                            <option value="購物">購物</option>
+                            <option value="餐飲">餐飲</option>
+                            <option value="交通">交通</option>
+                            <option value="住宿">住宿</option>
+                            <option value="其他">其他</option>
+                        </select>
+                    </div>
+                    <div>
+                         <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">備註</label>
+                         <input type="text" placeholder="..." className="w-full border border-gray-200 p-2.5 rounded-lg text-sm" value={newExpense.note} onChange={e => setNewExpense({...newExpense, note: e.target.value})} />
+                    </div>
+                </div>
+
+                <button type="submit" disabled={isUploading} className="w-full bg-sumi text-white py-3.5 rounded-xl font-bold shadow-lg mt-2 active:scale-[0.98] disabled:opacity-50">
+                    確認記帳 (Save)
+                </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ... (Keep SizeModal & AddStoreModal code as is, they are already at the bottom) ... */}
       {showSizeModal && (
         <div className="fixed inset-0 bg-kon-kikyo/90 backdrop-blur-sm z-50 flex flex-col justify-end sm:justify-center p-0 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md mx-auto h-[90vh] sm:h-auto flex flex-col shadow-2xl overflow-hidden">
