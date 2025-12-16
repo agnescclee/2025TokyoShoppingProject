@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient'
 import { 
   ClipboardList, CheckCircle2, Store, Plane, Plus, Trash2, MapPin, 
   Shirt, Camera, ShoppingBag, ShoppingCart, ExternalLink, X, Hotel, Train, Bus, 
-  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn, Palette, Coins, Edit, Save, Barcode
+  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn, Palette, Coins, Edit, Save, Barcode, RotateCcw
 } from 'lucide-react'
 
 function App() {
@@ -26,15 +26,15 @@ function App() {
   const [previewImage, setPreviewImage] = useState(null)
 
   // Item 編輯模式狀態
-  const [isEditingItem, setIsEditingItem] = useState(false) // 是否正在編輯商品
-  const [editingItemId, setEditingItemId] = useState(null)  // 正在編輯哪個 ID
+  const [isEditingItem, setIsEditingItem] = useState(false) 
+  const [editingItemId, setEditingItemId] = useState(null)  
   
   // Measurement 編輯狀態
-  const [isEditingSize, setIsEditingSize] = useState(false) // 是否正在編輯身形
+  const [isEditingSize, setIsEditingSize] = useState(false) 
 
-  // [V21] Store 編輯模式狀態
-  const [isEditingStore, setIsEditingStore] = useState(false) // 是否正在編輯商店
-  const [editingStoreId, setEditingStoreId] = useState(null)  // 正在編輯哪個 Store ID
+  // Store 編輯模式狀態
+  const [isEditingStore, setIsEditingStore] = useState(false) 
+  const [editingStoreId, setEditingStoreId] = useState(null)  
 
   // 輔助狀態
   const [targetDay, setTargetDay] = useState('') 
@@ -71,33 +71,27 @@ function App() {
   const fetchAllData = async () => {
     try {
       setLoading(true)
-      // 1. 抓取購物清單
       const { data: listData } = await supabase.from('shopping_list').select(`*, stores (name)`).order('created_at', { ascending: false })
       setItems(listData || [])
 
       const existingCategories = [...new Set((listData || []).map(item => item.category).filter(Boolean))]
       setCategories([...new Set(['保暖層', '雪褲', '雪衣', '鞋子', '帽子', '藥妝', '零食', ...existingCategories])])
 
-      // 2. 抓取身形資料
       const { data: measureData } = await supabase.from('measurements').select(`*, profiles (id, nickname, english_name, color_pref)`)
       setMeasurements(measureData || [])
       if (measureData?.length > 0 && !selectedMemberId) setSelectedMemberId(measureData[0].profiles.id)
 
-      // 3. 抓取成員
       const { data: profileData } = await supabase.from('profiles').select('*')
       setProfiles(profileData || [])
-      // 預設選第一個人
       if (profileData?.length > 0 && newItem.requester_ids.length === 0) {
         setNewItem(prev => ({ ...prev, requester_ids: [profileData[0].id] }))
       }
 
-      // 4. 抓取商店
       const { data: storeData } = await supabase.from('stores').select('*').order('plan_day', { ascending: true })
       setStores(storeData || [])
     } catch (error) { console.error('Error:', error) } finally { setLoading(false) }
   }
 
-  // --- Logic: Multi-Select Requesters ---
   const toggleRequester = (profileId) => {
     const currentIds = newItem.requester_ids || []
     if (currentIds.includes(profileId)) {
@@ -106,8 +100,6 @@ function App() {
       setNewItem({ ...newItem, requester_ids: [...currentIds, profileId] })
     }
   }
-
-  // --- CRUD Actions (Items) ---
 
   const togglePurchase = async (id, currentStatus) => {
     try {
@@ -124,7 +116,6 @@ function App() {
     } catch (error) { alert('刪除失敗') }
   }
 
-  // 開啟 Item 編輯模式
   const openEditModal = (item) => {
     setIsEditingItem(true)
     setEditingItemId(item.id)
@@ -144,7 +135,6 @@ function App() {
     setShowAddModal(true)
   }
 
-  // 新增或更新 Item
   const handleSaveItem = async (e) => {
     e.preventDefault(); if (!newItem.item_name) return alert('請輸入品項名稱')
     
@@ -172,9 +162,6 @@ function App() {
     } catch (error) { alert('操作失敗: ' + error.message) }
   }
 
-  // --- CRUD Actions (Stores) ---
-
-  // [V21] 開啟商店編輯模式
   const openEditStoreModal = (store) => {
     setIsEditingStore(true)
     setEditingStoreId(store.id)
@@ -191,7 +178,6 @@ function App() {
     setShowAddStoreModal(true)
   }
 
-  // [V21] 儲存商店 (新增或更新)
   const handleSaveStore = async (e) => {
     e.preventDefault(); if (!newStore.name) return alert('請輸入店名')
     try {
@@ -202,12 +188,10 @@ function App() {
       }
 
       if (isEditingStore) {
-        // Update
         const { error } = await supabase.from('stores').update(payload).eq('id', editingStoreId)
         if (error) throw error
         alert('商店更新成功！')
       } else {
-        // Insert
         const { error } = await supabase.from('stores').insert([payload])
         if (error) throw error
         alert('商店新增成功！')
@@ -215,7 +199,6 @@ function App() {
 
       setShowAddStoreModal(false)
       setShowAssignModal(false)
-      // 重置狀態
       setIsEditingStore(false)
       setEditingStoreId(null)
       setNewStore({ name: '', category: '戶外用品', address: '', google_map_link: '', buying_tips: '', plan_day: '', lat: '', lng: '' })
@@ -250,7 +233,6 @@ function App() {
     } catch (error) { alert('排程失敗') }
   }
 
-  // --- Measurement Edit Logic ---
   const startEditMeasurement = (m) => {
     setEditMeasure({ ...m }) 
     setIsEditingSize(true)
@@ -273,7 +255,6 @@ function App() {
     } catch (error) { alert('更新失敗') }
   }
 
-  // Helpers
   const formatPrice = (price) => price ? price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",") : '';
   const displayItems = items.filter(item => activeTab === 'todo' ? !item.is_purchased : item.is_purchased)
   
@@ -298,105 +279,122 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gofun pb-32 font-sans text-sumi">
-      {/* Header */}
-      <header className="bg-ruri text-white p-4 sticky top-0 z-20 shadow-md">
-        <h1 className="text-lg font-bold text-center tracking-widest flex items-center justify-center gap-2">
-           <ShoppingCart className="w-5 h-5" /> 東京採購特攻隊
-        </h1>
-        <div className="flex justify-between text-xs mt-3 px-2 opacity-90 font-light">
-          <span className="flex items-center gap-1"><Store className="w-3 h-3"/> 12/19 - 12/23</span>
-          <span>進度: {items.filter(i => i.is_purchased).length}/{items.length}</span>
+      {/* 這裡新增一個外層 div，設定 sticky top-0，把 Header 和 Tabs 包在一起 */}
+      <div className="sticky top-0 z-30 shadow-md">
+        
+        {/* Header: 拿掉原本的 sticky 設定 */}
+        <header className="bg-ruri text-white p-4">
+          <h1 className="text-lg font-bold text-center tracking-widest flex items-center justify-center gap-2">
+             <ShoppingCart className="w-5 h-5" /> 東京採購特攻隊
+          </h1>
+          <div className="flex justify-between text-xs mt-3 px-2 opacity-90 font-light">
+            <span className="flex items-center gap-1"><Store className="w-3 h-3"/> 12/19 - 12/23</span>
+            <span>進度: {items.filter(i => i.is_purchased).length}/{items.length}</span>
+          </div>
+        </header>
+
+        {/* Tabs: 拿掉原本的 sticky 和 top 設定 */}
+        <div className="flex bg-white/95 backdrop-blur-sm overflow-x-auto border-b border-gray-100 no-scrollbar">
+          <TabButton icon={<ClipboardList size={18}/>} label="待購" active={activeTab === 'todo'} onClick={() => setActiveTab('todo')} color="ruri" />
+          <TabButton icon={<CheckCircle2 size={18}/>} label="完成" active={activeTab === 'done'} onClick={() => setActiveTab('done')} color="green" />
+          <TabButton icon={<CalendarDays size={18}/>} label="攻略" active={activeTab === 'strategy'} onClick={() => setActiveTab('strategy')} color="red" />
+          <TabButton icon={<Store size={18}/>} label="店家" active={activeTab === 'stores'} onClick={() => setActiveTab('stores')} color="orange" />
+          <TabButton icon={<Plane size={18}/>} label="資訊" active={activeTab === 'info'} onClick={() => setActiveTab('info')} color="purple" />
         </div>
-      </header>
-
-      {/* Tabs */}
-      <div className="flex bg-white/95 backdrop-blur-sm shadow-sm sticky top-[72px] z-10 overflow-x-auto border-b border-gray-100 no-scrollbar">
-        <TabButton icon={<ClipboardList size={18}/>} label="待購" active={activeTab === 'todo'} onClick={() => setActiveTab('todo')} color="ruri" />
-        <TabButton icon={<CheckCircle2 size={18}/>} label="完成" active={activeTab === 'done'} onClick={() => setActiveTab('done')} color="green" />
-        <TabButton icon={<CalendarDays size={18}/>} label="攻略" active={activeTab === 'strategy'} onClick={() => setActiveTab('strategy')} color="red" />
-        <TabButton icon={<Store size={18}/>} label="店家" active={activeTab === 'stores'} onClick={() => setActiveTab('stores')} color="orange" />
-        <TabButton icon={<Plane size={18}/>} label="資訊" active={activeTab === 'info'} onClick={() => setActiveTab('info')} color="purple" />
       </div>
-
-      {/* Main Content */}
+      
       <main className="p-3 space-y-3">
-        {/* VIEW: Shopping List */}
         {(activeTab === 'todo' || activeTab === 'done') && (
           <>
             {displayItems.length === 0 && <div className="text-center text-gray-400 py-20 text-sm">無項目</div>}
             {displayItems.map((item) => (
-              <div key={item.id} className={`bg-white rounded-xl shadow-sm border border-gray-100 p-3 flex gap-3 relative transition-all ${item.is_purchased ? 'opacity-50 grayscale' : ''}`}>
+              <div key={item.id} className={`bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col transition-all overflow-hidden ${item.is_purchased ? 'opacity-60 grayscale' : ''}`}>
                 
-                {/* Image */}
-                <div 
-                  className="w-16 h-16 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 border border-gray-100 relative cursor-zoom-in active:scale-95 transition-transform"
-                  onClick={() => item.image_url ? setPreviewImage(item.image_url) : null}
-                >
-                   {item.image_url ? (
-                     <>
-                       <img src={item.image_url} className="w-full h-full object-cover" onError={(e) => e.target.style.display='none'} />
-                       <div className="absolute bottom-0 right-0 bg-black/50 text-white p-0.5 rounded-tl-md"><ZoomIn size={10} /></div>
-                     </>
-                   ) : (
-                     <ShoppingBag className="text-gray-300 w-6 h-6" />
-                   )}
-                </div>
+                {/* [V22] TOP SECTION: Image & Info */}
+                <div className="p-3 flex gap-3 relative">
+                  {/* Image */}
+                  <div 
+                    className="w-20 h-20 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 border border-gray-100 relative cursor-zoom-in active:scale-95 transition-transform"
+                    onClick={() => item.image_url ? setPreviewImage(item.image_url) : null}
+                  >
+                     {item.image_url ? (
+                       <>
+                         <img src={item.image_url} className="w-full h-full object-cover" onError={(e) => e.target.style.display='none'} />
+                         <div className="absolute bottom-0 right-0 bg-black/50 text-white p-0.5 rounded-tl-md"><ZoomIn size={10} /></div>
+                       </>
+                     ) : (
+                       <ShoppingBag className="text-gray-300 w-8 h-8" />
+                     )}
+                  </div>
 
-                <div className="flex-1 min-w-0 pr-2">
-                  <div className="flex justify-between items-center mb-1">
-                    {renderRequesters(item.requester_ids)}
+                  {/* Info (Full Width Now) */}
+                  <div className="flex-1 min-w-0 flex flex-col justify-center">
+                    <div className="flex justify-between items-start mb-1">
+                      {/* Requesters (No longer cramped) */}
+                      {renderRequesters(item.requester_ids)}
+                      
+                      {/* Store & Category Badges */}
+                      <div className="flex gap-1 ml-auto shrink-0 pl-2">
+                         {item.stores?.name && <span className="text-[10px] text-ruri bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded truncate max-w-[80px] flex items-center gap-0.5"><MapPin size={8} />{item.stores.name}</span>}
+                         <span className="text-[10px] text-gray-500 border border-gray-200 px-1.5 py-0.5 rounded">{item.category}</span>
+                      </div>
+                    </div>
                     
-                    <div className="flex gap-1 ml-auto">
-                       {item.stores?.name && <span className="text-[10px] text-ruri bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded truncate max-w-[80px] flex items-center gap-0.5"><MapPin size={8} />{item.stores.name}</span>}
-                       <span className="text-[10px] text-gray-500 border border-gray-200 px-1.5 py-0.5 rounded">{item.category}</span>
+                    <h3 className="font-bold text-sumi text-base leading-tight mb-1">{item.item_name}</h3>
+                    
+                    {item.product_code && <div className="flex items-center gap-1 text-xs text-gray-400 font-mono mb-1"><Barcode size={10}/> {item.product_code}</div>}
+                    
+                    <div className="text-xs text-gray-500 mt-auto flex flex-wrap gap-2 items-center">
+                      {item.size && <span className="flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100"><Shirt size={10}/> {item.size}</span>}
+                      {item.color && <span className="flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100"><Palette size={10}/> {item.color}</span>}
+                      <span className="text-sumi font-bold bg-gray-100 px-1.5 rounded">x{item.quantity}</span>
+                      {item.max_price && (
+                        <span className="text-karakurenai font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-100 flex items-center gap-0.5">
+                          <Coins size={10} /> ¥{formatPrice(item.max_price)}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  
-                  <h3 className="font-bold text-sumi text-base truncate leading-tight">{item.item_name}</h3>
-                  
-                  {item.product_code && <div className="flex items-center gap-1 text-xs text-gray-500 font-mono mt-1"><Barcode size={10}/> {item.product_code}</div>}
-                  
-                  <div className="text-xs text-gray-500 mt-2 flex flex-wrap gap-2 items-center">
-                    {item.size && <span className="flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100"><Shirt size={10}/> {item.size}</span>}
-                    {item.color && <span className="flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100"><Palette size={10}/> {item.color}</span>}
-                    <span className="text-sumi font-bold bg-gray-100 px-1.5 rounded">x{item.quantity}</span>
-                  </div>
-
-                  {item.max_price && (
-                    <div className="mt-2 inline-flex items-center gap-1 text-xs text-karakurenai font-bold bg-red-50 px-2 py-0.5 rounded border border-red-100">
-                      <Coins size={10} /> 上限 ¥{formatPrice(item.max_price)}
-                    </div>
-                  )}
-                  
-                   {item.purchase_note && <div className="text-xs text-gray-400 mt-1 italic">📝 {item.purchase_note}</div>}
                 </div>
+
+                {/* Note Section (Full Width if exists) */}
+                {item.purchase_note && <div className="px-3 pb-2 text-xs text-gray-400 italic">📝 {item.purchase_note}</div>}
                 
-                {/* Vertical Actions */}
-                <div className="flex flex-col justify-start items-center gap-2 pl-2 border-l border-gray-100 w-12 flex-shrink-0">
-                  {!item.is_purchased && (
-                    <>
-                      <button onClick={() => openEditModal(item)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-50 text-gray-500 border border-gray-200 active:scale-95 transition-all">
-                        <Edit size={18} />
-                      </button>
-                      <button onClick={() => handleDelete(item.id)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-red-50 text-karakurenai active:scale-95 transition-all">
-                        <Trash2 size={20} />
-                      </button>
-                    </>
-                  )}
-                  
-                  <div className="flex-1"></div>
-                  
-                  <label className={`w-10 h-10 flex items-center justify-center rounded-xl border cursor-pointer active:scale-95 transition-all ${item.is_purchased ? 'bg-green-50 border-green-200 text-green-600' : 'bg-blue-50 border-blue-100 text-ruri'}`}>
-                    <input type="checkbox" checked={item.is_purchased} onChange={() => togglePurchase(item.id, item.is_purchased)} className="hidden" />
-                    {item.is_purchased ? <CheckCircle2 size={22} /> : <div className="w-5 h-5 rounded border-2 border-current" />}
-                  </label>
+                {/* [V22] BOTTOM SECTION: Actions Bar (Separator Line) */}
+                <div className="border-t border-gray-100 p-2 flex items-center gap-2 bg-gray-50/50">
+                   {/* 1. Toggle Purchase (Big Button) */}
+                   <button 
+                      onClick={() => togglePurchase(item.id, item.is_purchased)}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg font-bold text-sm transition-all active:scale-[0.98] shadow-sm ${
+                        item.is_purchased 
+                          ? 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-100' // Undo Style
+                          : 'bg-ruri text-white border border-ruri hover:bg-ruri-light' // Check Style
+                      }`}
+                   >
+                      {item.is_purchased ? <RotateCcw size={16}/> : <CheckCircle2 size={16}/>}
+                      {item.is_purchased ? '恢復未購 (Undo)' : '標示已購 (Done)'}
+                   </button>
+                   
+                   {/* 2. Edit Button (Small) */}
+                   {!item.is_purchased && (
+                     <button onClick={() => openEditModal(item)} className="w-11 h-11 flex items-center justify-center rounded-lg bg-white text-gray-500 border border-gray-200 active:scale-95 transition-all shadow-sm">
+                       <Edit size={18} />
+                     </button>
+                   )}
+
+                   {/* 3. Delete Button (Small) */}
+                   {!item.is_purchased && (
+                     <button onClick={() => handleDelete(item.id)} className="w-11 h-11 flex items-center justify-center rounded-lg bg-white text-karakurenai border border-red-100 active:scale-95 transition-all shadow-sm">
+                       <Trash2 size={18} />
+                     </button>
+                   )}
                 </div>
               </div>
             ))}
           </>
         )}
 
-        {/* VIEW: Strategy (攻略) */}
+        {/* VIEW: Strategy */}
         {activeTab === 'strategy' && (
           <div className="space-y-6 pb-10">
             {strategyDays.map(day => {
@@ -436,7 +434,7 @@ function App() {
           </div>
         )}
 
-        {/* VIEW: Stores List (V21 Updated) */}
+        {/* VIEW: Stores List */}
         {activeTab === 'stores' && (
           <div className="space-y-4">
              {stores.map(store => (
@@ -450,11 +448,9 @@ function App() {
                   </div>
                   {store.buying_tips && <div className="mb-4 bg-yellow-50 p-2.5 rounded-lg text-xs text-gray-600 border border-yellow-100 leading-relaxed"><span className="font-bold text-yellow-700 block mb-1">💡 採購重點：</span>{store.buying_tips}</div>}
                   
-                  {/* Buttons */}
                   <div className="flex gap-2 border-t border-gray-50 pt-3">
                     {store.google_map_link && <a href={store.google_map_link} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-ruri/5 text-ruri py-2.5 rounded-xl border border-ruri/20 text-xs font-bold active:bg-ruri/10 transition-colors"><Navigation size={16} /> 導航</a>}
                     
-                    {/* [V21] Edit Button */}
                     <button onClick={() => openEditStoreModal(store)} className="w-12 flex items-center justify-center bg-gray-50 text-gray-500 rounded-xl border border-gray-200 active:scale-95 transition-all">
                       <Edit size={20} />
                     </button>
@@ -478,21 +474,16 @@ function App() {
         )}
       </main>
 
-      {/* FAB (Floating Action Button) [V21 Updated] */}
       {(activeTab === 'todo' || activeTab === 'done' || activeTab === 'stores') && (
         <button onClick={() => { 
-            // Reset Item Form
             setIsEditingItem(false); 
             setNewItem({...newItem, requester_ids: [profiles[0]?.id]});
             
-            // Logic for opening modals based on tab
             if (activeTab === 'stores') {
-               // [V21] Store Mode: Reset to "Add" mode
                setIsEditingStore(false);
                setNewStore({ name: '', category: '戶外用品', address: '', google_map_link: '', buying_tips: '', plan_day: '', lat: '', lng: '' });
                setShowAddStoreModal(true);
             } else {
-               // Item Mode
                setShowAddModal(true); 
             }
           }}
@@ -501,7 +492,6 @@ function App() {
         </button>
       )}
 
-      {/* Footer */}
       <footer className="fixed bottom-0 w-full bg-kon-kikyo text-gray-400 border-t border-gray-800 p-2 pb-5 flex justify-around z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
         <NavButton icon={<ClipboardList size={22} />} label="清單" active={activeTab === 'todo'} onClick={() => { setActiveTab('todo'); setShowAddModal(false); }} />
         <button className="flex flex-col items-center justify-center bg-white text-ruri w-14 h-14 rounded-full -mt-8 shadow-xl border-4 border-gofun relative z-10 active:scale-95 transition-transform" onClick={() => setShowSizeModal(true)}>
@@ -510,7 +500,6 @@ function App() {
         <NavButton icon={<Camera size={22} />} label="掃描" active={false} onClick={() => alert('開發中')} />
       </footer>
 
-      {/* Modal: Image Preview */}
       {previewImage && (
         <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setPreviewImage(null)}>
           <img src={previewImage} className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain" onClick={(e) => e.stopPropagation()} />
@@ -518,7 +507,6 @@ function App() {
         </div>
       )}
 
-      {/* Modal: Size Card */}
       {showSizeModal && (
         <div className="fixed inset-0 bg-kon-kikyo/90 backdrop-blur-sm z-50 flex flex-col justify-end sm:justify-center p-0 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md mx-auto h-[90vh] sm:h-auto flex flex-col shadow-2xl overflow-hidden">
@@ -541,7 +529,6 @@ function App() {
                 <button onClick={() => setShowSizeModal(false)} className="text-gray-400 hover:text-sumi p-1 bg-white rounded-full border border-gray-200"><X size={20}/></button>
               </div>
             </div>
-            {/* Tabs */}
             <div className="grid grid-cols-5 gap-2 p-3 border-b border-gray-100 bg-white">
               {measurements.map(m => (
                 <button key={m.id} onClick={() => { setSelectedMemberId(m.profiles.id); setIsEditingSize(false); }} className={`py-2 rounded-lg text-xs font-bold transition-all truncate ${selectedMemberId === m.profiles.id ? 'bg-ruri text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>{m.profiles.english_name}</button>
@@ -583,7 +570,6 @@ function App() {
         </div>
       )}
 
-      {/* Modal: Assign Store */}
       {showAssignModal && (
         <div className="fixed inset-0 bg-kon-kikyo/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
@@ -592,7 +578,6 @@ function App() {
         </div>
       )}
 
-      {/* Add/Edit Item Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-kon-kikyo/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -641,20 +626,16 @@ function App() {
         </div>
       )}
 
-      {/* Add/Edit Store Modal (V21 Updated) */}
       {showAddStoreModal && (
         <div className="fixed inset-0 bg-kon-kikyo/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="bg-orange-500 p-4 text-white flex justify-between items-center rounded-t-2xl">
               <h3 className="font-bold text-lg flex items-center gap-2">
-                {/* [V21] Dynamic Icon */}
                 {isEditingStore ? <Edit size={20}/> : <Store size={20}/>} 
-                {/* [V21] Dynamic Title */}
                 {isEditingStore ? '編輯店家' : '新增店家'}
               </h3>
               <button onClick={() => setShowAddStoreModal(false)} className="opacity-80 hover:opacity-100"><X size={24}/></button>
             </div>
-            {/* [V21] Use handleSaveStore */}
             <form onSubmit={handleSaveStore} className="p-5 space-y-4">
               <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Name</label><input type="text" className="w-full border border-gray-200 p-2.5 rounded-lg outline-none" value={newStore.name} onChange={e => setNewStore({...newStore, name: e.target.value})} /></div>
               <div className="grid grid-cols-2 gap-4">
@@ -672,7 +653,6 @@ function App() {
               <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Tips</label><textarea className="w-full border border-gray-200 p-2.5 rounded-lg h-20 text-sm resize-none" value={newStore.buying_tips} onChange={e => setNewStore({...newStore, buying_tips: e.target.value})} /></div>
               
               <button type="submit" className="w-full bg-orange-500 text-white py-3.5 rounded-xl font-bold shadow-lg mt-2">
-                {/* [V21] Dynamic Button Text */}
                 {isEditingStore ? '確認更新 (Update)' : '新增商店 (Add)'}
               </button>
             </form>
@@ -682,9 +662,6 @@ function App() {
     </div>
   )
 }
-
-// ... 下面是原本的 Sub-Components (TabButton, NavButton, SizeRow, BodyVisualWithFists) ...
-// 為了版面簡潔，請保留你原本的這部分程式碼，因為它們沒有變動。
 
 function TabButton({ icon, label, active, onClick, color = 'ruri' }) {
   const colorClasses = {
