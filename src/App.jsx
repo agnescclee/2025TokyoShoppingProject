@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient'
 import { 
   ClipboardList, CheckCircle2, Store, Plane, Plus, Trash2, MapPin, 
   Shirt, Camera, ShoppingBag, ShoppingCart, ExternalLink, X, Hotel, Train, Bus, 
-  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn, Palette, Coins, Edit, Save, Barcode, RotateCcw, Map as MapIcon, List, Wallet, ImagePlus, Loader2, Filter
+  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn, Palette, Coins, Edit, Save, Barcode, RotateCcw, Map as MapIcon, List, Wallet, ImagePlus, Loader2, Filter, Lightbulb, Sticker
 } from 'lucide-react'
 
 // --- 地圖相關引入 ---
@@ -88,6 +88,84 @@ function App() {
   const [targetDay, setTargetDay] = useState('') 
   const [selectedStoreId, setSelectedStoreId] = useState('') 
   const [selectedMemberId, setSelectedMemberId] = useState(null)
+
+// ... 其他狀態 ...
+  const [showTipsModal, setShowTipsModal] = useState(false) // 控制燈泡彈窗
+  
+  // --- 重點提示資料 (可以改用 Supabase，這裡先用 State 示範，亦可存 LocalStorage) ---
+  const [tips, setTips] = useState([])
+  
+  // 編輯提示的暫存狀態
+  const [editingTip, setEditingTip] = useState(null) // 正在編輯哪一筆
+  const [tempTipContent, setTempTipContent] = useState({ title: '', content: '' })
+
+  // --- Tips Helpers ---
+  const handleAddTip = async () => {
+    try {
+      // 先在 DB 插入一筆空白的，拿到 ID 後馬上進入編輯模式
+      const { data, error } = await supabase
+        .from('tips')
+        .insert([{ title: '新筆記', content: '' }])
+        .select()
+
+      if (error) throw error
+      
+      if (data && data.length > 0) {
+        const newTip = data[0]
+        setTips([...tips, newTip]) // 先更新 UI 讓感覺變快
+        startEditTip(newTip) // 直接進入編輯模式
+      }
+    } catch (error) {
+      alert('新增失敗')
+    }
+  }
+
+  const handleDeleteTip = async (id) => {
+    if (!confirm('刪除這條筆記？')) return
+    try {
+      const { error } = await supabase.from('tips').delete().eq('id', id)
+      if (error) throw error
+      
+      setTips(tips.filter(t => t.id !== id)) // 更新 UI
+    } catch (error) {
+      alert('刪除失敗')
+    }
+  }
+
+  const startEditTip = (tip) => {
+    setEditingTip(tip.id)
+    setTempTipContent({ title: tip.title, content: tip.content })
+  }
+
+  const saveTip = async () => {
+    try {
+      // 準備要存的 payload
+      const payload = {
+        title: tempTipContent.title,
+        content: tempTipContent.content
+      }
+
+      if (editingTip) {
+        // 如果是編輯舊的 (editingTip 是 id)
+        const { error } = await supabase.from('tips').update(payload).eq('id', editingTip)
+        if (error) throw error
+      } else {
+        // 如果是新增 (因為只有用 saveTip，我們需要判斷)
+        // 其實我們原本邏輯是 handleAddTip 先加一個空的，然後再編輯。
+        // 為了讓邏輯更順，建議修改 handleAddTip 如下，或者這裡直接單純用 update。
+        
+        // 為了最簡單改動，我們只要確保 database 寫入即可：
+        const { error } = await supabase.from('tips').update(payload).eq('id', editingTip)
+        if (error) throw error
+      }
+
+      setEditingTip(null)
+      fetchAllData() // 重新抓取最新資料
+      // alert('筆記更新成功！') // 嫌吵可以拿掉
+    } catch (error) {
+      alert('儲存失敗: ' + error.message)
+    }
+  }
   
   // --- 表單狀態 ---
   const [newItem, setNewItem] = useState({
@@ -142,6 +220,10 @@ function App() {
 
       const { data: expenseData } = await supabase.from('expenses').select('*').order('created_at', { ascending: false })
       setExpenses(expenseData || [])
+
+      // [新增] 抓取 Tips
+      const { data: tipsData } = await supabase.from('tips').select('*').order('created_at', { ascending: true })
+      setTips(tipsData || [])
 
     } catch (error) { console.error('Error:', error) } finally { setLoading(false) }
   }
@@ -399,15 +481,26 @@ function App() {
       
       {/* 頂部固定區塊 */}
       <div className="sticky top-0 z-30 shadow-md">
-        <header className="bg-ruri text-white p-4">
+        <header className="bg-ruri text-white p-4 relative"> {/* 加上 relative */}
+          
+          {/* [新增] 右上角燈泡按鈕 */}
+          <button 
+            onClick={() => setShowTipsModal(true)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 p-2 rounded-full transition-all active:scale-95 border border-white/10"
+          >
+            <Lightbulb size={20} className="text-yellow-300 fill-yellow-300/20" />
+          </button>
+
           <h1 className="text-lg font-bold text-center tracking-widest flex items-center justify-center gap-2">
              <ShoppingCart className="w-5 h-5" /> 東京採購特攻隊
           </h1>
           <div className="flex justify-between text-xs mt-3 px-2 opacity-90 font-light">
-            <span className="flex items-center gap-1"><Store className="w-3 h-3"/> 12/19 - 12/23</span>
-            <span>進度: {items.filter(i => i.is_purchased).length}/{items.length}</span>
+             {/* ... 原本的內容 ... */}
+             <span className="flex items-center gap-1"><Store className="w-3 h-3"/> 12/19 - 12/23</span>
+             <span>進度: {items.filter(i => i.is_purchased).length}/{items.length}</span>
           </div>
         </header>
+        {/* ... TabButton 區塊 ... */}
 
         <div className="flex bg-white/95 backdrop-blur-sm overflow-x-auto border-b border-gray-100 no-scrollbar">
           <TabButton icon={<ClipboardList size={18}/>} label="待購" active={activeTab === 'todo'} onClick={() => setActiveTab('todo')} color="ruri" />
@@ -928,6 +1021,80 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* --- Tips / Cheat Sheet Modal --- */}
+      {showTipsModal && (
+        <div className="fixed inset-0 bg-kon-kikyo/90 backdrop-blur-sm z-[70] flex flex-col justify-end sm:justify-center animate-in fade-in duration-200">
+           {/* 點擊背景關閉 */}
+           <div className="absolute inset-0" onClick={() => setShowTipsModal(false)}></div>
+           
+           <div className="bg-gray-100 w-full max-w-md mx-auto h-[85vh] sm:h-[80vh] sm:rounded-2xl rounded-t-2xl shadow-2xl relative flex flex-col overflow-hidden z-10">
+              
+              {/* Header */}
+              <div className="bg-sumi text-white p-4 flex justify-between items-center shadow-md shrink-0">
+                <h3 className="font-bold text-lg flex items-center gap-2 text-yellow-300">
+                  <Lightbulb size={20} className="fill-yellow-300"/> 採購重點筆記
+                </h3>
+                <button onClick={() => setShowTipsModal(false)} className="p-1 hover:bg-white/10 rounded-full"><X size={24}/></button>
+              </div>
+
+              {/* Content Scroll Area */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <p className="text-xs text-gray-500 text-center mb-2">點擊卡片可編輯內容</p>
+                
+                {tips.map(tip => (
+                  <div key={tip.id} className="bg-yellow-50 border-l-4 border-yellow-400 rounded-r-xl shadow-sm p-4 relative group transition-all">
+                    
+                    {editingTip === tip.id ? (
+                      /* 編輯模式 */
+                      <div className="space-y-2">
+                        <input 
+                          type="text" 
+                          className="w-full bg-white border border-yellow-200 rounded px-2 py-1 font-bold text-sumi focus:outline-none focus:border-yellow-500"
+                          value={tempTipContent.title}
+                          onChange={e => setTempTipContent({...tempTipContent, title: e.target.value})}
+                          placeholder="標題..."
+                          autoFocus
+                        />
+                        <textarea 
+                          className="w-full bg-white border border-yellow-200 rounded px-2 py-1 text-sm text-gray-700 min-h-[80px] focus:outline-none focus:border-yellow-500 resize-none"
+                          value={tempTipContent.content}
+                          onChange={e => setTempTipContent({...tempTipContent, content: e.target.value})}
+                          placeholder="內容..."
+                        />
+                        <div className="flex justify-end gap-2 mt-2">
+                          <button onClick={() => handleDeleteTip(tip.id)} className="text-xs text-red-400 px-3 py-1">刪除</button>
+                          <button onClick={saveTip} className="bg-sumi text-white text-xs px-4 py-1.5 rounded-lg font-bold">完成</button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* 閱讀模式 */
+                      <div onClick={() => startEditTip(tip)}>
+                        <div className="flex justify-between items-start mb-1">
+                          <h4 className="font-bold text-sumi flex items-center gap-2">
+                            <Sticker size={14} className="text-yellow-600"/>
+                            {tip.title}
+                          </h4>
+                        </div>
+                        <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed pl-5">
+                          {tip.content || <span className="text-gray-400 italic">點擊輸入內容...</span>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                <button 
+                  onClick={handleAddTip}
+                  className="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-400 font-bold flex items-center justify-center gap-2 hover:bg-white hover:border-yellow-400 hover:text-yellow-600 transition-all"
+                >
+                  <Plus size={20} /> 新增一則筆記
+                </button>
+              </div>
+           </div>
+        </div>
+      )}
+      
     </div>
   )
 }
