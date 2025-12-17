@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient'
 import { 
   ClipboardList, CheckCircle2, Store, Plane, Plus, Trash2, MapPin, 
   Shirt, Camera, ShoppingBag, ShoppingCart, ExternalLink, X, Hotel, Train, Bus, 
-  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn, Palette, Coins, Edit, Save, Barcode, RotateCcw, Map as MapIcon, List, Wallet, ImagePlus, Loader2
+  AlertCircle, Navigation, CalendarDays, ArrowRight, ZoomIn, Palette, Coins, Edit, Save, Barcode, RotateCcw, Map as MapIcon, List, Wallet, ImagePlus, Loader2, Filter
 } from 'lucide-react'
 
 // --- 地圖相關引入 ---
@@ -24,13 +24,35 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
+// [React] 定義一個紅色大頭針圖示物件
+const redIcon = new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+});
+
+// [React] 彩色圖釘 helper
+const getColoredIcon = (color) => {
+    return new L.Icon({
+        iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    });
+}
+
 function App() {
   // --- 資料狀態 ---
   const [items, setItems] = useState([])
   const [measurements, setMeasurements] = useState([]) 
   const [profiles, setProfiles] = useState([]) 
   const [stores, setStores] = useState([]) 
-  const [expenses, setExpenses] = useState([]) // [V26] 記帳資料
+  const [expenses, setExpenses] = useState([]) 
   const [categories, setCategories] = useState([]) 
   const [loading, setLoading] = useState(true)
   
@@ -40,8 +62,12 @@ function App() {
   const [showAddModal, setShowAddModal] = useState(false) 
   const [showAddStoreModal, setShowAddStoreModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
-  const [showExpenseModal, setShowExpenseModal] = useState(false) // [V26] 記帳 Modal
+  const [showExpenseModal, setShowExpenseModal] = useState(false) 
   
+  // Filter 狀態
+  const [filterCategory, setFilterCategory] = useState('All')
+  const [filterStore, setFilterStore] = useState('All')
+
   // 商店顯示模式
   const [storeViewMode, setStoreViewMode] = useState('list')
 
@@ -55,7 +81,7 @@ function App() {
   const [isEditingStore, setIsEditingStore] = useState(false) 
   const [editingStoreId, setEditingStoreId] = useState(null)  
 
-  // [V26] 上傳狀態
+  // 上傳狀態
   const [isUploading, setIsUploading] = useState(false)
 
   // 輔助狀態
@@ -75,7 +101,6 @@ function App() {
     plan_day: '', lat: '', lng: ''
   })
 
-  // [V26] 記帳表單
   const [newExpense, setNewExpense] = useState({
     amount: '', store_name: '', category: '購物', note: '', receipt_url: ''
   })
@@ -115,7 +140,6 @@ function App() {
       const { data: storeData } = await supabase.from('stores').select('*').order('plan_day', { ascending: true })
       setStores(storeData || [])
 
-      // [V26] 抓取花費
       const { data: expenseData } = await supabase.from('expenses').select('*').order('created_at', { ascending: false })
       setExpenses(expenseData || [])
 
@@ -281,31 +305,23 @@ function App() {
     } catch (error) { alert('更新失敗') }
   }
 
-  // --- [V26] 記帳相關邏輯 ---
-
-  // 上傳圖片到 Supabase Storage
   const handleReceiptUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
 
     setIsUploading(true)
     try {
-      // 1. 產生不重複檔名
       const fileExt = file.name.split('.').pop()
       const fileName = `${Date.now()}.${fileExt}`
       const filePath = `${fileName}`
 
-      // 2. 上傳
       const { error: uploadError } = await supabase.storage
         .from('receipts')
         .upload(filePath, file)
 
       if (uploadError) throw uploadError
 
-      // 3. 取得公開網址
       const { data } = supabase.storage.from('receipts').getPublicUrl(filePath)
-      
-      // 4. 更新 State
       setNewExpense(prev => ({ ...prev, receipt_url: data.publicUrl }))
       
     } catch (error) {
@@ -315,7 +331,6 @@ function App() {
     }
   }
 
-  // 儲存記帳
   const handleSaveExpense = async (e) => {
     e.preventDefault();
     if (!newExpense.amount) return alert('請輸入金額')
@@ -334,7 +349,7 @@ function App() {
       alert('記帳成功！')
       setShowExpenseModal(false)
       setNewExpense({ amount: '', store_name: '', category: '購物', note: '', receipt_url: '' })
-      fetchAllData() // 刷新列表
+      fetchAllData() 
     } catch (error) {
       alert('儲存失敗：' + error.message)
     }
@@ -351,7 +366,12 @@ function App() {
 
   // Helpers
   const formatPrice = (price) => price ? price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",") : '';
-  const displayItems = items.filter(item => activeTab === 'todo' ? !item.is_purchased : item.is_purchased)
+  
+  // DisplayItems Logic with Filters
+  const displayItems = items
+    .filter(item => activeTab === 'todo' ? !item.is_purchased : item.is_purchased)
+    .filter(item => filterCategory === 'All' || item.category === filterCategory)
+    .filter(item => filterStore === 'All' || item.stores?.name === filterStore)
   
   const renderRequesters = (ids) => {
     if (!ids || ids.length === 0) return null
@@ -370,7 +390,6 @@ function App() {
     )
   }
 
-  // 計算總花費
   const totalExpense = expenses.reduce((sum, item) => sum + (item.amount || 0), 0)
 
   if (loading) return <div className="flex h-screen items-center justify-center text-xl text-ruri animate-pulse">載入中...</div>
@@ -403,7 +422,34 @@ function App() {
         {/* VIEW: Shopping List */}
         {(activeTab === 'todo' || activeTab === 'done') && (
           <>
-            {displayItems.length === 0 && <div className="text-center text-gray-400 py-20 text-sm">無項目</div>}
+            {/* Filters UI */}
+            <div className="flex gap-2 mb-2 sticky top-[130px] z-20">
+               <div className="relative flex-1">
+                  <select 
+                    className="w-full appearance-none bg-white border border-gray-200 text-gray-700 py-2 px-3 pr-8 rounded-lg leading-tight focus:outline-none focus:border-ruri text-xs font-bold"
+                    value={filterCategory}
+                    onChange={(e) => setFilterCategory(e.target.value)}
+                  >
+                    <option value="All">全部分類 (Category)</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500"><Filter size={12}/></div>
+               </div>
+               <div className="relative flex-1">
+                  <select 
+                    className="w-full appearance-none bg-white border border-gray-200 text-gray-700 py-2 px-3 pr-8 rounded-lg leading-tight focus:outline-none focus:border-ruri text-xs font-bold"
+                    value={filterStore}
+                    onChange={(e) => setFilterStore(e.target.value)}
+                  >
+                    <option value="All">全部店家 (Store)</option>
+                    {stores.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500"><Store size={12}/></div>
+               </div>
+            </div>
+
+            {displayItems.length === 0 && <div className="text-center text-gray-400 py-20 text-sm">無符合項目</div>}
+            
             {displayItems.map((item) => (
               <div key={item.id} className={`bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col transition-all overflow-hidden ${item.is_purchased ? 'opacity-60 grayscale' : ''}`}>
                 <div className="p-3 flex gap-3 relative">
@@ -524,45 +570,62 @@ function App() {
              ))}
 
              {storeViewMode === 'map' && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden h-[60vh] relative z-0">
-                   <MapContainer center={[35.6812, 139.7671]} zoom={13} style={{ height: '100%', width: '100%' }}>
-                      <TileLayer
-                        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                      />
-                      {stores.filter(s => s.lat && s.lng).map(store => (
-                        <Marker key={store.id} position={[store.lat, store.lng]}>
-                          <Popup minWidth={200}>
-                            <div className="font-sans">
-                              <div className="flex justify-between items-start mb-2 border-b border-gray-100 pb-1">
-                                <strong className="text-sm text-sumi">{store.name}</strong>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${store.plan_day ? 'bg-ruri text-white' : 'bg-gray-200 text-gray-500'}`}>
-                                  {store.plan_day || '未排'}
-                                </span>
-                              </div>
-                              <div className="text-xs text-gray-500 mb-3 space-y-1">
-                                <p>{store.category}</p>
-                                {store.buying_tips ? <p className="text-orange-600 bg-orange-50 p-1 rounded">💡 {store.buying_tips}</p> : <p className="italic text-gray-300">無採購筆記</p>}
-                              </div>
-                              <div className="flex gap-2">
-                                {store.google_map_link && <a href={store.google_map_link} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-xs font-bold no-underline hover:bg-blue-100"><Navigation size={12} className="mr-1"/> 導航</a>}
-                                <button onClick={() => openEditStoreModal(store)} className="flex-1 flex items-center justify-center bg-gray-50 text-gray-600 border border-gray-200 py-1.5 rounded text-xs font-bold hover:bg-gray-100"><Edit size={12} className="mr-1"/> 編輯</button>
-                                <button onClick={() => handleDeleteStore(store.id)} className="w-8 flex items-center justify-center bg-red-50 text-red-500 border border-red-100 py-1.5 rounded hover:bg-red-100"><Trash2 size={12}/></button>
-                              </div>
-                            </div>
-                          </Popup>
-                        </Marker>
-                      ))}
-                   </MapContainer>
+  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden h-[60vh] relative z-0">
+      <MapContainer center={[35.6812, 139.7671]} zoom={13} style={{ height: '100%', width: '100%' }}>
+        <TileLayer
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        />
+
+        {/* --- [新增] 飯店地標 (紅色) --- */}
+        {/* 座標：Hotel LiVEMAX Kayabacho (35.6749, 139.7797) */}
+        <Marker position={[35.6749, 139.7797]} icon={redIcon} zIndexOffset={1000}>
+          <Popup>
+            <div className="font-bold text-red-600 text-sm flex items-center gap-1">
+              <Hotel size={14} /> 
+              Hotel LiVEMAX Kayabacho
+            </div>
+            <p className="text-xs text-gray-500 mt-1">住宿點 (茅場町)</p>
+          </Popup>
+        </Marker>
+
+        {/* --- 商店地標 (統一改為藍色) --- */}
+        {stores.filter(s => s.lat && s.lng).map(store => {
+          // 移除原本的 iconColor 變色邏輯，直接指定 'blue'
+          return (
+            <Marker key={store.id} position={[store.lat, store.lng]} icon={getColoredIcon('blue')}>
+              <Popup minWidth={200}>
+                <div className="font-sans">
+                  <div className="flex justify-between items-start mb-2 border-b border-gray-100 pb-1">
+                    <strong className="text-sm text-sumi">{store.name}</strong>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${store.plan_day ? 'bg-ruri text-white' : 'bg-gray-200 text-gray-500'}`}>
+                      {store.plan_day || '未排'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500 mb-3 space-y-1">
+                    <p>{store.category}</p>
+                    {store.buying_tips ? <p className="text-orange-600 bg-orange-50 p-1 rounded">💡 {store.buying_tips}</p> : <p className="italic text-gray-300">無採購筆記</p>}
+                  </div>
+                  <div className="flex gap-2">
+                    {store.google_map_link && <a href={store.google_map_link} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-xs font-bold no-underline hover:bg-blue-100"><Navigation size={12} className="mr-1"/> 導航</a>}
+                    <button onClick={() => openEditStoreModal(store)} className="flex-1 flex items-center justify-center bg-gray-50 text-gray-600 border border-gray-200 py-1.5 rounded text-xs font-bold hover:bg-gray-100"><Edit size={12} className="mr-1"/> 編輯</button>
+                    <button onClick={() => handleDeleteStore(store.id)} className="w-8 flex items-center justify-center bg-red-50 text-red-500 border border-red-100 py-1.5 rounded hover:bg-red-100"><Trash2 size={12}/></button>
+                  </div>
                 </div>
-             )}
+              </Popup>
+            </Marker>
+          )
+        })}
+      </MapContainer>
+  </div>
+)}
           </div>
         )}
 
-        {/* VIEW: Info & Wallet [V26] */}
+        {/* VIEW: Info & Wallet */}
         {activeTab === 'info' && (
           <div className="space-y-4 pb-10">
-            {/* [V26] Wallet Dashboard */}
+            {/* Wallet Dashboard */}
             <div className="bg-gradient-to-r from-sumi to-gray-800 rounded-xl shadow-md p-5 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet size={120}/></div>
                 <h3 className="text-xs font-bold text-gray-400 mb-1 flex items-center gap-2"><Wallet size={14}/> 累計花費 (Total Spending)</h3>
@@ -574,7 +637,7 @@ function App() {
                 </button>
             </div>
 
-            {/* [V26] Recent Expenses List */}
+            {/* Expenses List */}
             {expenses.length > 0 && (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                     <h3 className="font-bold text-sm text-sumi mb-3 flex items-center justify-between">
@@ -604,10 +667,51 @@ function App() {
                 </div>
             )}
 
-            {/* Static Info (Flight, etc.) */}
-            <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-ruri p-4"><h3 className="text-base font-bold text-ruri flex items-center gap-2 mb-3"><Plane className="rotate-45" size={20} /> 去程 (MM620)</h3><div className="text-sm text-gray-600 space-y-2"><div className="flex justify-between items-center font-bold text-sumi text-lg"><span>02:25 桃園</span><span className="text-gray-300">➔</span><span>06:30 成田</span></div><div className="bg-red-50 text-karakurenai px-3 py-1.5 rounded-md text-xs font-bold inline-flex items-center gap-1.5"><AlertCircle size={14}/> 01:35 關櫃</div></div></div>
-            <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-orange-400 p-4"><h3 className="text-base font-bold text-orange-600 flex items-center gap-2 mb-2"><Hotel size={20} /> 飯店資訊</h3><p className="font-bold text-sumi text-lg">Hotel LiVEMAX Kayabacho</p><p className="text-sm text-gray-500 mt-1 flex gap-1"><MapPin size={14} className="mt-0.5"/> 〒103-0025 東京都中央区日本橋茅場町3-7-3</p><div className="mt-4"><a href="https://www.google.com/maps/dir/?api=1&destination=Hotel+LiVEMAX+Kayabacho" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-orange-50 text-orange-600 py-3 rounded-xl font-bold border border-orange-100 hover:bg-orange-100 transition-colors shadow-sm"><MapPin size={18} /> 帶我去飯店</a></div></div>
-            <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-gray-400 p-4"><h3 className="text-base font-bold text-gray-700 flex items-center gap-2 mb-4"><Train size={20} /> 機場交通 (成田 ⮂ 茅場町)</h3><div className="space-y-6"><div className="border-b border-gray-100 pb-4"><div className="flex justify-between items-center mb-1"><span className="font-bold text-sumi flex items-center gap-1.5"><Train size={16} className="text-gray-400"/> 方案 A：京成 Access</span><span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">¥1,400</span></div><p className="text-xs text-gray-500 leading-relaxed mb-3">成田機場 ➔ Access 特急 (往羽田) ➔ <strong>日本橋站</strong> 下車 ➔ 走路 8 分鐘。</p><a href="https://www.google.com/maps/dir/?api=1&origin=Narita+International+Airport&destination=Hotel+LiVEMAX+Kayabacho&travelmode=transit" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-gray-50 text-gray-600 py-3 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-colors"><Navigation size={18} /> 導航：機場 ➔ 飯店 (鐵路)</a></div><div><div className="flex justify-between items-center mb-1"><span className="font-bold text-sumi flex items-center gap-1.5"><Bus size={16} className="text-gray-400"/> 方案 B：利木津巴士</span><span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-mono">¥2,800</span></div><p className="text-xs text-gray-500 leading-relaxed mb-3">成田機場 ➔ 利木津巴士往「T-CAT」 ➔ T-CAT (水天宮前站) ➔ 走路 10 分鐘到飯店。</p><a href="https://www.google.com/maps/dir/?api=1&origin=Narita+Airport&destination=Tokyo+City+Air+Terminal&travelmode=transit" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-gray-50 text-gray-600 py-3 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-colors"><Navigation size={18} /> 導航：機場 ➔ 飯店 (巴士優先)</a></div></div></div>
+            {/* [V29] Flight Info (Added Return Flight) */}
+            <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-ruri p-4">
+              <h3 className="text-base font-bold text-ruri flex items-center gap-2 mb-3"><Plane className="rotate-45" size={20} /> 去程 (MM620)</h3>
+              <div className="text-sm text-gray-600 space-y-2 mb-4 border-b border-gray-100 pb-4">
+                <div className="flex justify-between items-center font-bold text-sumi text-lg"><span>02:25 桃園 T1</span><span className="text-gray-300">➔</span><span>06:30 成田 T1</span></div>
+                <div className="bg-red-50 text-karakurenai px-3 py-1.5 rounded-md text-xs font-bold inline-flex items-center gap-1.5"><AlertCircle size={14}/> 01:35 關櫃</div>
+              </div>
+              
+              <h3 className="text-base font-bold text-ruri flex items-center gap-2 mb-3"><Plane className="-rotate-135" size={20} /> 回程 (MM625)</h3>
+              <div className="text-sm text-gray-600 space-y-2">
+                <div className="flex justify-between items-center font-bold text-sumi text-lg"><span>16:35 成田 T1S</span><span className="text-gray-300">➔</span><span>20:00 桃園 T1</span></div>
+                <div className="bg-red-50 text-karakurenai px-3 py-1.5 rounded-md text-xs font-bold inline-flex items-center gap-1.5"><AlertCircle size={14}/> 15:45 關櫃</div>
+              </div>
+            </div>
+            
+            {/* Hotel Info */}
+            <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-orange-400 p-4"><h3 className="text-base font-bold text-orange-600 flex items-center gap-2 mb-2"><Hotel size={20} /> 飯店資訊</h3><p className="font-bold text-sumi text-lg">Hotel LiVEMAX Kayabacho</p><p className="text-sm text-gray-500 mt-1 flex gap-1"><MapPin size={14} className="mt-0.5"/> 〒103-0025 東京都中央区日本橋茅場町3-7-3</p><div className="mt-4"><a href="https://maps.app.goo.gl/VTiJDGQQspgiy2Vh6" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-orange-50 text-orange-600 py-3 rounded-xl font-bold border border-orange-100 hover:bg-orange-100 transition-colors shadow-sm"><MapPin size={18} /> 帶我去飯店</a></div></div>
+            
+            {/* Outlet Transport Info */}
+            <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-green-500 p-4">
+              <h3 className="text-base font-bold text-green-600 flex items-center gap-2 mb-3"><ShoppingBag size={20} /> 南町田 Outlet 交通攻略</h3>
+              <div className="space-y-3">
+                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <div className="flex items-center justify-between gap-2 text-sm font-bold text-sumi mb-2">
+                       <div className="flex items-center gap-2"><span className="bg-blue-100 text-ruri px-2 py-0.5 rounded text-xs">推薦路線</span><span>(約 60 分)</span></div>
+                       <span className="text-xs text-green-700 px-2 py-0.5 rounded font-mono">¥560</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                       <span className="font-bold">茅場町</span>
+                       <ArrowRight size={12} className="text-gray-400"/>
+                       <span>(東西線)</span>
+                       <ArrowRight size={12} className="text-gray-400"/>
+                       <span className="font-bold text-sumi">九段下</span>
+                       <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1 rounded ml-1">轉半藏門線</span>
+                       <ArrowRight size={12} className="text-gray-400"/>
+                       <span className="font-bold text-green-600">南町田 Grandberry Park</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-2">* 記得在九段下搭乘往「中央林間」的急行列車，可直通免換車。</p>
+                 </div>
+                 <a href="https://maps.app.goo.gl/2J8qUUTrwtGh7mLE8" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-green-50 text-green-600 py-3 rounded-xl font-bold border border-green-100 hover:bg-green-100 transition-colors shadow-sm"><Navigation size={18} /> 開啟 Google Maps 導航</a>
+              </div>
+            </div>
+
+            {/* Airport Transport */}
+            <div className="bg-white rounded-xl shadow-sm border-l-[6px] border-gray-400 p-4"><h3 className="text-base font-bold text-gray-700 flex items-center gap-2 mb-4"><Train size={20} /> 機場交通 (成田 ⮂ 茅場町)</h3><div className="space-y-6"><div className="border-b border-gray-100 pb-4"><div className="flex justify-between items-center mb-1"><span className="font-bold text-sumi flex items-center gap-1.5"><Train size={16} className="text-gray-400"/> 方案 A：京成 Access</span><span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">¥1,420</span></div><p className="text-xs text-gray-500 leading-relaxed mb-3">成田機場 ➔ Access 特急 (往羽田) ➔ <strong>日本橋站</strong> 下車 ➔ 走路 8 分鐘。</p><a href="https://www.google.com/maps/dir/?api=1&origin=Narita+International+Airport&destination=Hotel+LiVEMAX+Kayabacho&travelmode=transit" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-gray-50 text-gray-600 py-3 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-colors"><Navigation size={18} /> 導航：機場 ➔ 飯店 (鐵路)</a></div><div><div className="flex justify-between items-center mb-1"><span className="font-bold text-sumi flex items-center gap-1.5"><Bus size={16} className="text-gray-400"/> 方案 B：利木津巴士</span><span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-mono">¥3,100</span></div><p className="text-xs text-gray-500 leading-relaxed mb-3">成田機場 ➔ 利木津巴士往「T-CAT」 ➔ T-CAT (水天宮前站) ➔ 走路 10 分鐘到飯店。</p><a href="https://www.google.com/maps/dir/?api=1&origin=Narita+Airport&destination=Tokyo+City+Air+Terminal&travelmode=transit" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-gray-50 text-gray-600 py-3 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-colors"><Navigation size={18} /> 導航：機場 ➔ 飯店 (巴士優先)</a></div></div></div>
           </div>
         )}
       </main>
@@ -629,16 +733,16 @@ function App() {
         </button>
       )}
 
-      {/* Footer (Updated Camera Button) */}
+      {/* Footer */}
       <footer className="fixed bottom-0 w-full bg-kon-kikyo text-gray-400 border-t border-gray-800 p-2 pb-5 flex justify-around z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
         <NavButton icon={<ClipboardList size={22} />} label="清單" active={activeTab === 'todo'} onClick={() => { setActiveTab('todo'); setShowAddModal(false); }} />
         <button className="flex flex-col items-center justify-center bg-white text-ruri w-14 h-14 rounded-full -mt-8 shadow-xl border-4 border-gofun relative z-10 active:scale-95 transition-transform" onClick={() => setShowSizeModal(true)}>
           <Shirt size={28} strokeWidth={2} />
         </button>
-        {/* [V26] Updated Camera Action */}
         <NavButton icon={<Camera size={22} />} label="記帳" active={activeTab === 'info'} onClick={() => setShowExpenseModal(true)} />
       </footer>
 
+      {/* Modals ... (Same as V26) */}
       {previewImage && (
         <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setPreviewImage(null)}>
           <img src={previewImage} className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain" onClick={(e) => e.stopPropagation()} />
@@ -646,7 +750,6 @@ function App() {
         </div>
       )}
 
-      {/* [V26] Expense Modal (Wallet) */}
       {showExpenseModal && (
         <div className="fixed inset-0 bg-kon-kikyo/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
@@ -654,10 +757,7 @@ function App() {
               <h3 className="font-bold text-lg flex items-center gap-2"><Wallet size={20}/> 新增消費</h3>
               <button onClick={() => setShowExpenseModal(false)} className="opacity-80 hover:opacity-100"><X size={24}/></button>
             </div>
-            
             <form onSubmit={handleSaveExpense} className="p-5 space-y-4">
-                
-                {/* 1. 上傳收據區塊 */}
                 <div className="flex justify-center mb-2">
                     <label className={`w-full h-32 rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all relative overflow-hidden ${newExpense.receipt_url ? 'border-ruri bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'}`}>
                         {isUploading ? (
@@ -673,52 +773,15 @@ function App() {
                         <input type="file" accept="image/*" className="hidden" onChange={handleReceiptUpload} disabled={isUploading}/>
                     </label>
                 </div>
-
-                {/* 2. 金額 (大字) */}
-                <div>
-                    <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">金額 (¥)</label>
-                    <input type="number" placeholder="0" className="w-full border-b-2 border-gray-200 p-2 text-3xl font-mono font-bold text-center text-sumi outline-none focus:border-ruri bg-transparent" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})} autoFocus />
-                </div>
-
-                {/* 3. 店家 (可選現有) */}
-                <div>
-                    <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">店家</label>
-                    <div className="flex gap-2">
-                         <select className="w-1/3 border border-gray-200 p-2.5 rounded-lg bg-gray-50 text-xs" onChange={e => setNewExpense({...newExpense, store_name: e.target.value})}>
-                            <option value="">(快速選)</option>
-                            {stores.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                         </select>
-                         <input type="text" placeholder="輸入店名..." className="flex-1 border border-gray-200 p-2.5 rounded-lg text-sm outline-none" value={newExpense.store_name} onChange={e => setNewExpense({...newExpense, store_name: e.target.value})} />
-                    </div>
-                </div>
-
-                {/* 4. 類別 & 備註 */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">類別</label>
-                        <select className="w-full border border-gray-200 p-2.5 rounded-lg bg-gray-50 text-sm" value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value})}>
-                            <option value="購物">購物</option>
-                            <option value="餐飲">餐飲</option>
-                            <option value="交通">交通</option>
-                            <option value="住宿">住宿</option>
-                            <option value="其他">其他</option>
-                        </select>
-                    </div>
-                    <div>
-                         <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">備註</label>
-                         <input type="text" placeholder="..." className="w-full border border-gray-200 p-2.5 rounded-lg text-sm" value={newExpense.note} onChange={e => setNewExpense({...newExpense, note: e.target.value})} />
-                    </div>
-                </div>
-
-                <button type="submit" disabled={isUploading} className="w-full bg-sumi text-white py-3.5 rounded-xl font-bold shadow-lg mt-2 active:scale-[0.98] disabled:opacity-50">
-                    確認記帳 (Save)
-                </button>
+                <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">金額 (¥)</label><input type="number" placeholder="0" className="w-full border-b-2 border-gray-200 p-2 text-3xl font-mono font-bold text-center text-sumi outline-none focus:border-ruri bg-transparent" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})} autoFocus /></div>
+                <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">店家</label><div className="flex gap-2"><select className="w-1/3 border border-gray-200 p-2.5 rounded-lg bg-gray-50 text-xs" onChange={e => setNewExpense({...newExpense, store_name: e.target.value})}><option value="">(快速選)</option>{stores.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select><input type="text" placeholder="輸入店名..." className="flex-1 border border-gray-200 p-2.5 rounded-lg text-sm outline-none" value={newExpense.store_name} onChange={e => setNewExpense({...newExpense, store_name: e.target.value})} /></div></div>
+                <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">類別</label><select className="w-full border border-gray-200 p-2.5 rounded-lg bg-gray-50 text-sm" value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value})}><option value="購物">購物</option><option value="餐飲">餐飲</option><option value="交通">交通</option><option value="住宿">住宿</option><option value="其他">其他</option></select></div><div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">備註</label><input type="text" placeholder="..." className="w-full border border-gray-200 p-2.5 rounded-lg text-sm" value={newExpense.note} onChange={e => setNewExpense({...newExpense, note: e.target.value})} /></div></div>
+                <button type="submit" disabled={isUploading} className="w-full bg-sumi text-white py-3.5 rounded-xl font-bold shadow-lg mt-2 active:scale-[0.98] disabled:opacity-50">確認記帳 (Save)</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* ... (Keep SizeModal & AddStoreModal code as is, they are already at the bottom) ... */}
       {showSizeModal && (
         <div className="fixed inset-0 bg-kon-kikyo/90 backdrop-blur-sm z-50 flex flex-col justify-end sm:justify-center p-0 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md mx-auto h-[90vh] sm:h-auto flex flex-col shadow-2xl overflow-hidden">
@@ -741,9 +804,10 @@ function App() {
                 <button onClick={() => setShowSizeModal(false)} className="text-gray-400 hover:text-sumi p-1 bg-white rounded-full border border-gray-200"><X size={20}/></button>
               </div>
             </div>
+            {/* [V28] Updated: Use nickname instead of english_name */}
             <div className="grid grid-cols-5 gap-2 p-3 border-b border-gray-100 bg-white">
               {measurements.map(m => (
-                <button key={m.id} onClick={() => { setSelectedMemberId(m.profiles.id); setIsEditingSize(false); }} className={`py-2 rounded-lg text-xs font-bold transition-all truncate ${selectedMemberId === m.profiles.id ? 'bg-ruri text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>{m.profiles.english_name}</button>
+                <button key={m.id} onClick={() => { setSelectedMemberId(m.profiles.id); setIsEditingSize(false); }} className={`py-2 rounded-lg text-xs font-bold transition-all truncate ${selectedMemberId === m.profiles.id ? 'bg-ruri text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>{m.profiles.nickname}</button>
               ))}
             </div>
             <div className="p-6 flex-1 overflow-y-auto bg-white flex flex-col items-center">
@@ -828,9 +892,7 @@ function App() {
                 <div className="flex-1"><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Color</label><input type="text" placeholder="紅" className="w-full border border-gray-200 p-2.5 rounded-lg" value={newItem.color} onChange={e => setNewItem({...newItem, color: e.target.value})} /></div>
               </div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Note</label><input type="text" placeholder="備註..." className="w-full border border-gray-200 p-2.5 rounded-lg" value={newItem.purchase_note} onChange={e => setNewItem({...newItem, purchase_note: e.target.value})} /></div>
-              <button type="submit" className="w-full bg-ruri text-white py-3.5 rounded-xl font-bold shadow-lg active:scale-[0.98] transition-transform mt-2">
-                {isEditingItem ? '更新資料 (Update)' : '確認新增 (Add)'}
-              </button>
+              <button type="submit" className="w-full bg-ruri text-white py-3.5 rounded-xl font-bold shadow-lg active:scale-[0.98] transition-transform mt-2">{isEditingItem ? '更新資料 (Update)' : '確認新增 (Add)'}</button>
             </form>
           </div>
         </div>
@@ -853,10 +915,12 @@ function App() {
                 <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Visit Day</label><select className="w-full border border-gray-200 p-2.5 rounded-lg bg-gray-50 text-sm font-bold text-orange-600" value={newStore.plan_day} onChange={e => setNewStore({...newStore, plan_day: e.target.value})}><option value="Day 1">Day 1</option><option value="Day 2">Day 2</option><option value="Day 3">Day 3</option><option value="Day 4">Day 4</option><option value="Day 5">Day 5</option></select></div>
               </div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Address</label><input type="text" className="w-full border border-gray-200 p-2.5 rounded-lg text-sm" value={newStore.address} onChange={e => setNewStore({...newStore, address: e.target.value})} /></div>
+              
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Lat</label><input type="number" placeholder="35.689..." className="w-full border border-gray-200 p-2.5 rounded-lg text-sm" value={newStore.lat} onChange={e => setNewStore({...newStore, lat: e.target.value})} /></div>
                 <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Lng</label><input type="number" placeholder="139.691..." className="w-full border border-gray-200 p-2.5 rounded-lg text-sm" value={newStore.lng} onChange={e => setNewStore({...newStore, lng: e.target.value})} /></div>
               </div>
+
               <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Map Link</label><input type="text" placeholder="https://..." className="w-full border border-gray-200 p-2.5 rounded-lg text-sm" value={newStore.google_map_link} onChange={e => setNewStore({...newStore, google_map_link: e.target.value})} /></div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Tips</label><textarea className="w-full border border-gray-200 p-2.5 rounded-lg h-20 text-sm resize-none" value={newStore.buying_tips} onChange={e => setNewStore({...newStore, buying_tips: e.target.value})} /></div>
               <button type="submit" className="w-full bg-orange-500 text-white py-3.5 rounded-xl font-bold shadow-lg mt-2">{isEditingStore ? '確認更新 (Update)' : '新增商店 (Add)'}</button>
